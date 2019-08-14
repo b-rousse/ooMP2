@@ -4,25 +4,47 @@
 typedef Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> MatrixCD; //custom double
 typedef Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> MatrixCI; //custom integer
 
-TensorRank4 Update_MP2_doubles(const int , const int , TensorRank4 *, const TensorRank4 *, const Eigen::MatrixXd *);
+//TensorRank4 Update_MP2_doubles(const int , const int , TensorRank4 *, const TensorRank4 *, const Eigen::MatrixXd *);
 //TensorRank4 Update_MP2_doublesspinorbital(const int , const int , TensorRank4 *, const TensorRank4 *, const Eigen::MatrixXd *);
-TensorRank4 Calculate_MP2_residuals(int *, const double, const int, const int, const TensorRank4 *, const TensorRank4 *, const Eigen::MatrixXd *);
+//TensorRank4 Calculate_MP2_residuals(int *, const double, const int, const int, const TensorRank4 *, const TensorRank4 *, const Eigen::MatrixXd *);
 //TensorRank4 Calculate_MP2_residualsspinorbital(int *, const double, const int, const int, const TensorRank4 *, const TensorRank4 *, const Eigen::MatrixXd *);
 //Eigen::MatrixXd Test_Noncanonical_MP2(const int, Eigen::MatrixXd *);//Test the code with localized MOs on water; easiest to get from GAMESS with LOCAL keyword.
 //Eigen::MatrixXd Test_Spinfree_Noncanonical_MP2(const int, Eigen::MatrixXd *);//Test the code with localized MOs on water; easiest to get from GAMESS with LOCAL keyword.
-double RunMP2spinfreenoncanon(const TensorRank4 *, Eigen::MatrixXd *, const int , const int , const Eigen::VectorXd *, const Eigen::MatrixXd *, const Eigen::MatrixXd *);
+//double RunMP2spinfreenoncanon(const TensorRank4 *, Eigen::MatrixXd *, const int , const int , const Eigen::VectorXd *, const Eigen::MatrixXd *, const Eigen::MatrixXd *);
 //double RunMP2spinorbitalnoncanon(const TensorRank4 *, Eigen::MatrixXd *, const int, const int, const Eigen::VectorXd *, const Eigen::MatrixXd *, const Eigen::MatrixXd *);
 
-Eigen::MatrixXd fock_spinfreebuildforMP2(const int, const Eigen::MatrixXd *, const Eigen::MatrixXd *, const Eigen::MatrixXd *, const TensorRank4 *);
+//Eigen::MatrixXd fock_spinfreebuildforMP2(const int, const Eigen::MatrixXd *, const Eigen::MatrixXd *, const Eigen::MatrixXd *, const TensorRank4 *);
 //Eigen::MatrixXd fock_spinorbitalbuildforMP2(const int, const Eigen::MatrixXd *, const TensorRank4 *);
 //Eigen::MatrixXd fock_spinorbitalbuildforMP2(const int, const int, const Eigen::MatrixXd *, const TensorRank4 *, const Eigen::MatrixXd *);
 
-TensorRank4 Basic_convert_ERI_Tensor_AOtospinfreeMO(const int, const int, Eigen::MatrixXd *, const TensorRank4 *);
-double Spinfree_EMP2(const int, const int, const TensorRank4 *, const TensorRank4 *);
+//TensorRank4 Basic_convert_ERI_Tensor_AOtospinfreeMO(const int, const int, Eigen::MatrixXd *, const TensorRank4 *);
+//double Spinfree_EMP2(const int, const int, const TensorRank4 *, const TensorRank4 *);
 //double Spinorbital_EMP2(const int, const int, const TensorRank4 *, const TensorRank4 *);
-double Canonical_EMP2_Spinfree(const int, const int, const TensorRank4 *, const Eigen::VectorXd *);
+//double Canonical_EMP2_Spinfree(const int, const int, const TensorRank4 *, const Eigen::VectorXd *);
 //double Canonical_EMP2_Spinorbital(const int, const int, const TensorRank4 *, const Eigen::MatrixXd *);
 //TensorRank4 Basic_convert_ERI_Tensor_SpinfreeMOtoSpinorbitalMO(const int, const TensorRank4 *);
+class SpinFreeMP2{
+    public:
+    const TensorRank4 eriTensor;//make sure I pass instance of class the reference to eriTensor, NOT make a copy.
+    const int nbfs, numocc;
+    Eigen::MatrixXd Coeffs;
+    const Eigen::MatrixXd H_core, S;
+    const Eigen::VectorXd Evals;
+    
+    SpinFreeMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd *Coeffs, const int nbfs, const int numocc, const Eigen::VectorXd *Evals, const Eigen::MatrixXd *H_core, const Eigen::MatrixXd *S);
+
+    Eigen::MatrixXd fock_spinfreebuildforMP2(const Eigen::MatrixXd *P);
+
+    TensorRank4 Basic_convert_ERI_Tensor_AOtospinfreeMO();
+
+    double Canonical_EMP2_Spinfree(const TensorRank4 *MP2Tensor, const Eigen::VectorXd *Fockevals);
+
+    double Spinfree_EMP2(const TensorRank4 *MP2Tensor, const TensorRank4 *doubles);
+
+    TensorRank4 Calculate_MP2_residuals(int *residcounter, const double residconv, const TensorRank4 *MP2Tensor, const TensorRank4 *doubles, const Eigen::MatrixXd *F);
+
+    TensorRank4 Update_MP2_doubles(TensorRank4 *doubles, const TensorRank4 *residual, const Eigen::MatrixXd *F);
+};
 
 class SpinOrbitalMP2{
     public:
@@ -41,6 +63,7 @@ class SpinOrbitalMP2{
     Eigen::MatrixXd fock_spinorbitalbuildforMP2(const Eigen::MatrixXd *F_mo);
 
     TensorRank4 Basic_convert_ERI_Tensor_AOtospinfreeMO();
+
     TensorRank4 Basic_convert_ERI_Tensor_SpinfreeMOtoSpinorbitalMO(const TensorRank4 *MP2Tensor);
 
     double Canonical_EMP2_Spinorbital(const TensorRank4 *MP2Tensor, const Eigen::MatrixXd *CanFock);
