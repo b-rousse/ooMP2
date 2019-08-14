@@ -1,4 +1,5 @@
 // standard C++ headers
+#pragma once
 #include <cmath>
 #include <iostream>
 #include <fstream>

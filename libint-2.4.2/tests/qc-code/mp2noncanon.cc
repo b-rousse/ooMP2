@@ -462,7 +462,7 @@ TensorRank4 Calculate_MP2_residualsspinorbital(int *residcounter, const double r
             for(int j = 0; j < 2*numocc; j++) {
                 for(int a = 0; a < 2*nbfs-2*numocc; a++) {
                     for(int b = 0; b < 2*nbfs-2*numocc; b++) {
-                        residual(i,a,j,b) = (*MP2Tensor)(i,a+2*numocc,j,b+2*numocc) - (*MP2Tensor)(i,b+2*numocc,j,a+2*numocc);
+                        residual(i,a,j,b) = (*MP2Tensor)(i,a+2*numocc,j,b+2*numocc) - (*MP2Tensor)(i,b+2*numocc,j,a+2*numocc);//gbar^i,j_a,b
                         for(int k = 0; k < 2*numocc; k++) {
                             residual(i,a,j,b) += - (*F)(i,k) * (*doubles)(k,a,j,b) - (*F)(j,k) * (*doubles)(i,a,k,b);
                         }

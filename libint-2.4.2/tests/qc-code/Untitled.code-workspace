@@ -80,7 +80,12 @@
 			"utility": "cpp",
 			"vector": "cpp",
 			"tensor": "cpp",
-			"iomanip": "cpp"
+			"iomanip": "cpp",
+			"__errc": "cpp",
+			"__hash_table": "cpp",
+			"__node_handle": "cpp",
+			"optional": "cpp",
+			"unordered_map": "cpp"
 		}
 	}
 }

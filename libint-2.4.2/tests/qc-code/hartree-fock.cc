@@ -971,12 +971,14 @@ int main(int argc, char *argv[]) {
     Eigen::MatrixXd C_occ(nao,ndocc);
     
     double EMP2=0.0;
-
+    SpinOrbitalMP2 MyMP2Instance(&g, &C, nao, ndocc, &E_orb, &H_core_forMP2, &S_forMP2);
+    //MyMP2Instance.EMP2SO;
+    //SpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd *Coeffs, const int nbfs, const int numocc, const Eigen::VectorXd *Evals, const Eigen::MatrixXd *H_core, 
+    //const Eigen::MatrixXd *S): eriTensor(*eriTensor), Coeffs(*Coeffs), nbfs(nbfs), numocc(numocc), Evals(*Evals), H_core(*H_core), S(*S)
     //EMP2=RunMP2spinfreenoncanon(&g, &C, nao, ndocc, &E_orb, &H_core_forMP2, &S_forMP2);
-    EMP2=RunMP2spinorbitalnoncanon(&g, &C, nao, ndocc, &E_orb, &H_core_forMP2, &S_forMP2);
-    //EMP2=RunMP2(&g, &C, nao, ndocc, &E_orb);
+    ////EMP2=RunMP2spinorbitalnoncanon(&g, &C, nao, ndocc, &E_orb, &H_core_forMP2, &S_forMP2);
     //std::cout << "MP2 correction: " << EMP2 << endl;
-    printf("MP2 correction: %2.12f \n", EMP2);
+    //printf("MP2 correction: %2.12f \n", MyMP2Instance.);
 
     for (int mu = 0; mu < nao; mu++) {
       for (int i = 0; i < ndocc; i++) {

@@ -15,14 +15,14 @@ code = qc-code/hartree-fock
 check2:: $(code)
 	$^ 
 
-mp2noncanon.o: qc-code/mp2noncanon.cc
+oomp2noncanon.o: qc-code/oomp2noncanon.cc
 
 basis_set.o: qc-code/basis_set.cc
 	g++ -c -I /Users/user/Documents/c++extensions/eigen-eigen-323c052e1731 $^ -std=c++11
 
 basis_set1.o: qc-code/basis_set1.cc
 
-$(code): $(code).o qc-code/basis_set.o qc-code/basis_set1.o qc-code/mp2noncanon.o   
+$(code): $(code).o qc-code/basis_set.o qc-code/basis_set1.o qc-code/oomp2noncanon.o   
 	$(LTLINK) $(CXX) $(LDFLAGS) $(COMPUTE_LIB) $(SYSLIBS) -o $@ $^
 
 clean:: targetclean
