@@ -14,6 +14,7 @@
 #include <Eigen/Eigenvalues>
 #include <Eigen/Core>
 #include <unsupported/Eigen/CXX11/Tensor>
+#include <unsupported/Eigen/MatrixFunctions>
 #include "mp2noncanon.h"
 #include "tensor.h"
 Eigen::IOFormat FockFmt(6);
@@ -539,7 +540,7 @@ TensorRank4 SpinOrbitalMP2::Basic_convert_ERI_Tensor_AOtospinfreeMO() {
     return MP2Tensor;
 }
 
-TensorRank4 SpinOrbitalMP2::Basic_convert_ERI_Tensor_SpinfreeMOtoSpinorbitalMO(const TensorRank4 *MP2Tensor) {
+TensorRank4 SpinOrbitalMP2::Basic_convert_ERI_Tensor_SpinfreeMOtoSpinorbitalMO(const TensorRank4 *MP2Tensor) {//I could speed this up by setting to 0 rather than populating with 0.0
     TensorRank4 MP2TensorSO(2*nbfs+1, 2*nbfs+1, 2*nbfs+1, 2*nbfs+1);
     for(int p = 0; p < 2*nbfs; p+=2) {
         for(int q = 0; q < 2*nbfs; q+=2) {
@@ -645,17 +646,184 @@ TensorRank4 SpinOrbitalMP2::Update_MP2_doublesspinorbital(TensorRank4 *doubles, 
 }
 //END OF SpinOrbitalMP2 CLASS.
 
+//Figure how to make this a class later, possible one that inherits from the respective MP2 class (regarding spin). To make it smarter to avoid recalculating stuff, may have to restructure MP2 class... 
+//Using the doubles tensor, build the one and two-particle density matrices for OO-MP2
+//For now, this is all in spin orbital basis.
+Eigen::MatrixXd build_one_particle_density(const int numocc, const int nbfs, TensorRank4 *doubles){
+    Eigen::MatrixXd one_particle_density = Eigen::MatrixXd::Zero(2*nbfs,2*nbfs);
+    for (int i = 0; i < 2*numocc; i++) {
+        for (int j = 0; j < 2*numocc; j++) {
+            for (int a = 2*numocc; a < 2*nbfs; a++) {//check indexing of doubles here
+                for (int b = 2*numocc; b < 2*nbfs; b++) {
+                    for (int c = 2*numocc; c < 2*nbfs; c++) {//build the unoccupied one-particle density block
+                        one_particle_density(b,a) += 0.5 * (*doubles)(a,i,c,j) * (*doubles)(i,b,j,c);
+                    }
 
-
-/*Eigen::MatrixXd build_one_particle_density(const int numocc, const int nbfs, TensorRank4 doubles){
-    Eigen::MatrixXd density = Eigen::MatrixXd::Zero(nbfs,nbfs);
-    for (int i = 0; i < numocc; i++) {
-        for (int j = 0; j < numocc; j++) {
-            for (int a = 0; a < numocc; a++) {
-                for (int b = 0; b < numocc; b++) {
+                    for (int k = 0; k < 2*numocc; k++) {//build the occupied one particle density block
+                        one_particle_density(j,i) -= 0.5 * (*doubles)(j,a,k,b) * (*doubles)(a,i,b,k);
+                        if( i == j ){
+                            one_particle_density(j,i) += 1.0;
+                        }
+                    }
                 }
             }
         }
     }
+    return one_particle_density;
 }
-*/
+
+TensorRank4 build_two_particle_density(const int numocc, const int nbfs, TensorRank4 *doubles){
+    TensorRank4 two_particle_density(2*nbfs, 2*nbfs, 2*nbfs, 2*nbfs);
+    two_particle_density.setZero();
+    for (int i = 0; i < 2*numocc; i++) {
+        for (int j = 0; j < 2*numocc; j++) {
+            for (int a = 2*numocc; a < 2*nbfs; a++) {//check indexing of doubles here
+                for (int b = 2*numocc; b < 2*nbfs; b++) {
+                    two_particle_density(i,a,j,b) = (*doubles)(i,a,j,b);
+                    two_particle_density(i,b,j,a) = -1.0*(*doubles)(i,a,j,b);
+                    two_particle_density(j,a,i,b) = -1.0*(*doubles)(i,a,j,b);
+                    two_particle_density(j,b,i,a) = (*doubles)(i,a,j,b);
+                }
+            }
+        }
+    }
+    return two_particle_density;
+}
+
+//Compute the Newton-Raphson orbital rotation matrix
+Eigen::MatrixXd compute_newton_raphson_step(const int numocc, const int nbfs, const Eigen::MatrixXd *Fock, const TensorRank4 *two_particle_density, const Eigen::MatrixXd *one_particle_density, const Eigen::VectorXd *Evals){
+    //Eigen::MatrixXd step7_f(); // This is just the fock matrix in second quantization, and I can just pass to this function (or class if it ends up being inside one) the build_fock subroutine.
+    Eigen::MatrixXd X_vo = Eigen::MatrixXd::Zero(2*nbfs, 2*nbfs);//calculate newton-raphson step
+    for ( int i = 0; i < 2*numocc; i++) {
+        for ( int a = 2*numocc; a < 2*nbfs; a++ ) {
+            X_vo(a,i) = ((*Fock)(i,a) - (*Fock)(a,i))/((*Evals)(i) - (*Evals)(a));
+        }
+    }
+    Eigen::MatrixXd orbital_rotation_matrix_exponent = X_vo - X_vo.transpose();//build orbital rotation matrix
+    Eigen::MatrixXd orbital_rotation_matrix = orbital_rotation_matrix_exponent.exp();//both transpose and exp are part of eigen-unsupported
+    return orbital_rotation_matrix;
+}
+
+Eigen::MatrixXd rotate_spin_orbital_coefficients(const Eigen::MatrixXd *Coeffs, const int nbfs, const Eigen::MatrixXd *orbital_rotation_matrix){
+    Eigen::MatrixXd rotated_coeffs = Eigen::MatrixXd::Zero(2*nbfs, 2*nbfs);
+    rotated_coeffs.noalias() += *Coeffs * *orbital_rotation_matrix;
+    return rotated_coeffs;
+}
+//Step 10: recreate the one- and two-electron integrals using the rotate coefficients. Use one function Eigen::MatrixXd and another function TensorRank4.
+//START WITH AO INTS AGAIN??
+
+Eigen::MatrixXd rotate_one_electron_integrals(const int nbfs, const Eigen::MatrixXd *rotated_coefficients, const Eigen::MatrixXd *h_core_ao){
+    Eigen::MatrixXd h_core_spin_orbital = Eigen::MatrixXd::Zero(2*nbfs, 2*nbfs);
+    Eigen::MatrixXd rotated_one_electron_integrals = Eigen::MatrixXd::Zero(2*nbfs, 2*nbfs);
+    //auto T = compute_1body_ints(shells, Operator::kinetic);
+    for(int p = 0; p < 2*nbfs; p+=2) {
+        for(int q = 0; q < 2*nbfs; q+=2) {
+            for(int r = 0; r < nbfs; r++) {
+                for(int s = 0; s < nbfs; s++) {
+                    if(p/2==r && q/2==s) {
+                        h_core_spin_orbital(p,q) = (*h_core_ao)(r,s);
+                        h_core_spin_orbital(p,q+1) = 0.0;//don't need these, do I?
+                        h_core_spin_orbital(p+1,q) = 0.0;
+                        h_core_spin_orbital(p+1,q+1) = (*h_core_ao)(r,s);
+                    }
+                }
+            }
+        }
+    }
+    rotated_one_electron_integrals.noalias() += (*rotated_coefficients).transpose() * h_core_spin_orbital * *rotated_coefficients;
+    return rotated_one_electron_integrals;
+    // compute nuclear-attraction integrals
+    //Matrix V = compute_1body_ints(shells, Operator::nuclear, atoms);
+    //will i need to change T and/or V? I'm not sure I do... I think I just take my AO built H (H_core + eri) (H_core = T+V)
+}
+
+//In conventional MP2, I don't change MO eri tensor after construction, so it's fine to convert to MO tensor then convert to spin orbital MO tensor.
+//HOWEVER, in OOMP2, I change the eri tensor every iteration, so it seems smarter to convert AO tensor to spin orbital AO tensor, THEN to convert to MO with that iteration's coefficients.
+//That way, I avoid having to "stretch out" the tensor on every iteration, as I start with the AO tensor in spin orbital basis.
+//But, applicability to actual open-shell systems aside, isn't it faster to rotate the AO tensor in spin-free, THEN stretch to spin-orbital basis? 
+//I JUST REMEMBERED, I need the AO tensor to be in spin-orbital basis to do the tensor rotation, as the rotation matrices are already in spin-orbital basis.
+//THEREFORE, I will convert the AO tensor to spin-orbital AO tensor once, then keep it in memory and rotate it into new tensors every iteration.
+//Those new tensors will go out of scope / be cleared, but the spin-orbital AO tensor will stay in memory, saving us the pain of reconstructing it with every iteration.
+TensorRank4 construct_spinorbital_ao_electron_integral_tensor(const int nbfs, const TensorRank4 *eriTensor){
+    TensorRank4 eriTensorSO(2*nbfs+1, 2*nbfs+1, 2*nbfs+1, 2*nbfs+1);
+    //eriTensorSO.setZero(); // Use this later to not have to populate with zeros in the loops below.
+
+    for(int p = 0; p < 2*nbfs; p+=2) {
+        for(int q = 0; q < 2*nbfs; q+=2) {
+            for(int r = 0; r < 2*nbfs; r+=2) {
+                for(int s = 0; s < 2*nbfs; s+=2) {
+                    for(int i = 0; i < nbfs; i++) {
+                        for(int j = 0; j < nbfs; j++) {
+                            for(int k = 0; k < nbfs; k++) {
+                                for(int l = 0; l < nbfs; l++) {
+                                    if(p/2==i && q/2==j && r/2==k && s/2 ==l) {
+                                        eriTensorSO(p,q,r,s) = (*eriTensor)(i,j,k,l);
+                                        eriTensorSO(p+1,q,r,s) = 0.0;
+                                        eriTensorSO(p,q+1,r,s) = 0.0;
+                                        eriTensorSO(p,q,r+1,s) = 0.0;
+                                        eriTensorSO(p,q,r,s+1) = 0.0;
+                                        eriTensorSO(p+1,q+1,r,s) = (*eriTensor)(i,j,k,l);
+                                        eriTensorSO(p+1,q,r+1,s) = 0.0;
+                                        eriTensorSO(p+1,q,r,s+1) = 0.0;
+                                        eriTensorSO(p,q+1,r+1,s) = 0.0;
+                                        eriTensorSO(p,q+1,r,s+1) = 0.0;
+                                        eriTensorSO(p,q,r+1,s+1) = (*eriTensor)(i,j,k,l);
+                                        eriTensorSO(p+1,q+1,r+1,s) = 0.0;                    
+                                        eriTensorSO(p+1,q+1,r,s+1) = 0.0;
+                                        eriTensorSO(p+1,q,r+1,s+1) = 0.0;
+                                        eriTensorSO(p,q+1,r+1,s+1) = 0.0;
+                                        eriTensorSO(p+1,q+1,r+1,s+1) = (*eriTensor)(i,j,k,l);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return eriTensorSO;
+}
+
+TensorRank4 rotate_two_electron_integrals(const int nbfs, const Eigen::MatrixXd *rotated_coefficients, const TensorRank4 *eriTensorSO){
+    TensorRank4 rotated_two_electron_integrals(2*nbfs+1, 2*nbfs+1, 2*nbfs+1, 2*nbfs+1);
+    rotated_two_electron_integrals.setZero();
+    //rotated_two_electron_integrals += (*rotated_coefficients).transpose() * (*rotated_coefficients).transpose() * (*eriTensorSO).operator() *rotated_coefficients * *rotated_coefficients;
+    for (int mu = 0; mu < 2 * nbfs + 1; mu++){
+        for (int nu = 0; nu < 2 * nbfs + 1; nu++){
+            for (int rho = 0; rho < 2 * nbfs + 1; rho++){
+                for (int sigma = 0; sigma < 2 * nbfs + 1; sigma++){
+                    for (int p = 0; p < 2 * nbfs + 1; p++){
+                        for (int q = 0; q < 2 * nbfs + 1; q++){
+                            for (int r = 0; r < 2 * nbfs + 1; r++){
+                                for (int s = 0; s < 2 * nbfs + 1; s++){
+                                    rotated_two_electron_integrals(p,r,q,s) += (*rotated_coefficients)(p,mu) * (*rotated_coefficients)(q,nu) * ((*eriTensorSO)(mu,nu,rho,sigma)-(*eriTensorSO)(mu,nu,sigma,rho)) * (*rotated_coefficients)(rho,r) * (*rotated_coefficients)(sigma,s);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return rotated_two_electron_integrals;
+}
+
+double calculate_E_oomp2(const int nbfs, const int numocc, const Eigen::MatrixXd *one_particle_density, const TensorRank4 *two_particle_density, const Eigen::MatrixXd *rotated_one_electron_integrals, const TensorRank4 *rotated_two_electron_integrals){
+    double EMP2 = 0.0;
+    for(int i = 0; i < 2*numocc; i++) {
+        for(int j = 0; j < 2*numocc; j++) {
+            for(int a = 0; a < 2*nbfs - 2*numocc; a++) {
+                for(int b = 0; b < 2*nbfs - 2*numocc; b++) {
+                    EMP2 += 0.25 * ((*rotated_two_electron_integrals)(i,a+2*numocc,j,b+2*numocc) - (*rotated_two_electron_integrals)(i,b+2*numocc,j,a+2*numocc)) * (*two_particle_density)(i,a+2*numocc,j,b+2*numocc);
+                }
+            }
+        }
+    }
+    for(int i = 0; i < 2*nbfs; i++) {
+        for(int j = 0; j < 2*nbfs; j++) {
+            EMP2 += (*rotated_one_electron_integrals)(i,j)*(*one_particle_density)(j,i);
+        }
+    }
+    return EMP2;
+}
