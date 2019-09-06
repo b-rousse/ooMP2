@@ -971,8 +971,9 @@ int main(int argc, char *argv[]) {
     Eigen::MatrixXd C_occ(nao,ndocc);
     
     double EMP2=0.0;
-    SpinOrbitalMP2 MyMP2Instance(&g, &C, nao, ndocc, &E_orb, &H_core_forMP2, &S_forMP2);
-    SpinFreeMP2 MySpinFreeMP2Instance(&g, &C, nao, ndocc, &E_orb, &H_core_forMP2, &S_forMP2);
+    //SpinOrbitalMP2 MyMP2Instance(&g, &C, nao, ndocc, &E_orb, &H_core_forMP2, &S_forMP2);
+    //SpinFreeMP2 MySpinFreeMP2Instance(&g, &C, nao, ndocc, &E_orb, &H_core_forMP2, &S_forMP2);
+    OOSpinOrbitalMP2 MyOOMP2Instance(&g, C, nao, ndocc, &E_orb, &H_core_forMP2, &S_forMP2);
     //EMP2=RunMP2spinfreenoncanon(&g, &C, nao, ndocc, &E_orb, &H_core_forMP2, &S_forMP2);
     ////EMP2=RunMP2spinorbitalnoncanon(&g, &C, nao, ndocc, &E_orb, &H_core_forMP2, &S_forMP2);
     //std::cout << "MP2 correction: " << EMP2 << endl;
@@ -988,10 +989,11 @@ int main(int argc, char *argv[]) {
     }
     Eigen::MatrixXd P = 2.0*C_occ*C_occ.transpose();
 
+    /*
     std::cout << "Mu-X = " << -(P*mu_x).trace() << std::endl;
     std::cout << "Mu-Y = " << -(P*mu_y).trace() + atoms[0].atomic_number*atoms[0].y + atoms[1].atomic_number*atoms[1].y + atoms[2].atomic_number*atoms[2].y << std::endl;
     std::cout << "Mu-Z = " << -(P*mu_z).trace() << std::endl;
-
+    */
     //performs regular cis and tdhf calculation
     //cis_calculation(nao, ndocc, C, g, E_orb);
     //cis_d_inf_calculation(nao, ndocc, C, g, E_orb);

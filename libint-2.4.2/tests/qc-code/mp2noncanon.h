@@ -75,3 +75,50 @@ class SpinOrbitalMP2{
     TensorRank4 Update_MP2_doublesspinorbital(TensorRank4 *doubles, const TensorRank4 *residual, const Eigen::MatrixXd *F);
 
 };
+
+class OOSpinOrbitalMP2{
+    public:
+    const TensorRank4 eriTensor;//make sure I pass instance of class the reference to eriTensor, NOT make a copy.
+    const int nbfs, numocc;
+    //const int numMP2steps;
+    //const double residconv;
+    const Eigen::MatrixXd SFCoeffs;
+    const Eigen::MatrixXd S;
+    Eigen::MatrixXd H_core;
+    Eigen::VectorXd Evals;
+
+    OOSpinOrbitalMP2(const TensorRank4 *eriTensor, const Eigen::MatrixXd SFCoeffs, const int nbfs, const int numocc, Eigen::VectorXd *Evals, Eigen::MatrixXd *H_core, const Eigen::MatrixXd *S);
+
+    Eigen::MatrixXd fock_spinfreebuildforMP2(const Eigen::MatrixXd *P, const Eigen::MatrixXd *Coeffs);
+    
+    Eigen::MatrixXd fock_spinorbitalbuildforMP2(const Eigen::MatrixXd *F_mo);
+
+    TensorRank4 Basic_convert_ERI_Tensor_AOtospinfreeMO(const Eigen::MatrixXd *Coeffs);
+
+    TensorRank4 Basic_convert_ERI_Tensor_SpinfreeMOtoSpinorbitalMO(const TensorRank4 *MP2Tensor);
+
+    double Canonical_EMP2_Spinorbital(const TensorRank4 *MP2Tensor, const Eigen::MatrixXd *CanFock);
+
+    double Spinorbital_EMP2(const TensorRank4 *MP2Tensor, const TensorRank4 *doubles);
+
+    TensorRank4 Calculate_MP2_residualsspinorbital(int *residcounter, const double residconv, const TensorRank4 *MP2Tensor, const TensorRank4 *doubles, const Eigen::MatrixXd *F);
+
+    TensorRank4 Update_MP2_doublesspinorbital(TensorRank4 *doubles, const TensorRank4 *residual, const Eigen::MatrixXd *F);
+
+    Eigen::MatrixXd build_one_particle_density(TensorRank4 *doubles);
+
+    TensorRank4 build_two_particle_density(TensorRank4 *doubles);
+
+    //Compute the Newton-Raphson orbital rotation matrix
+    Eigen::MatrixXd compute_newton_raphson_step(const Eigen::MatrixXd *Fock, const TensorRank4 *two_particle_density, const Eigen::MatrixXd *one_particle_density);
+
+    Eigen::MatrixXd rotate_spin_orbital_coefficients(Eigen::MatrixXd SFCoeffs, const Eigen::MatrixXd *orbital_rotation_matrix);
+
+    Eigen::MatrixXd rotate_one_electron_integrals(const Eigen::MatrixXd *rotated_coefficients, const Eigen::MatrixXd *h_core_ao);
+
+    TensorRank4 construct_spinorbital_ao_electron_integral_tensor(const TensorRank4 *eriTensor);
+
+    TensorRank4 rotate_two_electron_integrals(const Eigen::MatrixXd *rotated_coefficients, const TensorRank4 *eriTensorSO);
+
+    double calculate_E_oomp2(const Eigen::MatrixXd *one_particle_density, const TensorRank4 *two_particle_density, const Eigen::MatrixXd *rotated_one_electron_integrals, const TensorRank4 *rotated_two_electron_integrals);
+};
