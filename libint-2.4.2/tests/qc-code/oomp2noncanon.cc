@@ -43,7 +43,6 @@ SpinFreeMP2::SpinFreeMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd *Coeffs, 
             }
         }
     }
-
     Eigen::MatrixXd F = Eigen::MatrixXd::Zero(nbfs,nbfs);  
     F = fock_spinfreebuildforMP2(&P);
     /* for(int i =0; i < nbfs; i++) {
@@ -387,7 +386,8 @@ SpinOrbitalMP2::SpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd *Co
             }
         }
     }
-    
+    std::cout << "P Matrix: " << std::endl << P << std::endl;
+
     Eigen::MatrixXd F = Eigen::MatrixXd::Zero(nbfs,nbfs);  
     Eigen::MatrixXd F_SO = Eigen::MatrixXd::Zero(2*nbfs,2*nbfs); 
     F = SpinOrbitalMP2::fock_spinfreebuildforMP2(&P);
@@ -541,7 +541,7 @@ TensorRank4 SpinOrbitalMP2::Basic_convert_ERI_Tensor_AOtospinfreeMO() {
 }
 
 TensorRank4 SpinOrbitalMP2::Basic_convert_ERI_Tensor_SpinfreeMOtoSpinorbitalMO(const TensorRank4 *MP2Tensor) {//I could speed this up by setting to 0 rather than populating with 0.0
-    TensorRank4 MP2TensorSO(2*nbfs+1, 2*nbfs+1, 2*nbfs+1, 2*nbfs+1);
+    TensorRank4 MP2TensorSO(2*nbfs, 2*nbfs, 2*nbfs, 2*nbfs);
     for(int p = 0; p < 2*nbfs; p+=2) {
         for(int q = 0; q < 2*nbfs; q+=2) {
             for(int r = 0; r < 2*nbfs; r+=2) {
@@ -655,9 +655,11 @@ OOSpinOrbitalMP2::OOSpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd
     double EOOMP2SO_old = 0.0;
     double E_diff_convergence = 0.0000001;
     int numMP2steps = 100;
+    int numOOMP2steps = 1;
     double E_diff;
     double residconv = 0.00000000001;
     std::cout << "Iteration         EMP2SO        residcounterSO" << std::endl;
+    //std::cout << "Evals: " << std::endl << *Evals << std::endl;
     //stretch first Coeffs before usage. Or... do the first iter outside of loop 
     //HERE IS WHERE THE ORBITAL OPTIMIZATION LOOP SHOULD BEGIN
     Eigen::MatrixXd Coeffs = Eigen::MatrixXd::Zero(2*nbfs,2*nbfs);
@@ -667,16 +669,20 @@ OOSpinOrbitalMP2::OOSpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd
                 for(int s = 0; s < nbfs; s++) {
                     if(p/2==r && q/2==s) {
                         Coeffs(p,q) = (SFCoeffs)(r,s);
-                        Coeffs(p,q+1) = 0.0;
-                        Coeffs(p+1,q) = 0.0;
                         Coeffs(p+1,q+1) = (SFCoeffs)(r,s);
                     }
                 }
             }
         }
     }
-    for(int ss = 0; ss < 4; ss++){
-        //what should the dimensions of Coeffs, and therefore P, be?? nbfs*nbfs or 2*nfbs*2*nbfs? first iteration, it's 49, then it's 4*49 and returns nan.
+    TensorRank4 eriTensorSO = OOSpinOrbitalMP2::construct_spinorbital_ao_electron_integral_tensor(eriTensor);//this should be untouched AO tensor.
+    TensorRank4 doublesSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
+    doublesSO.setZero();
+
+    //
+    //START OO LOOP
+    //
+    for(int ss = 0; ss < numOOMP2steps; ss++){
         Eigen::MatrixXd P = Eigen::MatrixXd::Zero(2*nbfs,2*nbfs);//density reconstructed from coefficients: needed to construct fock matrix which is in turn needed for non-canonical MP2
         for(int i = 0; i < 2*nbfs; i++) {
             for(int j = 0; j < 2*nbfs; j++) {
@@ -689,23 +695,23 @@ OOSpinOrbitalMP2::OOSpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd
         //Eigen::MatrixXd F = Eigen::MatrixXd::Zero(nbfs,nbfs);
         Eigen::MatrixXd F_SO = Eigen::MatrixXd::Zero(2*nbfs,2*nbfs);
         F_SO = OOSpinOrbitalMP2::fock_spinfreebuildforMP2(&P, &Coeffs);
+        std::cout << "F_SO = spinorbital rotated Fock Matrix: " << std::endl << F_SO << std::endl;//THIS IS DIAGONAL IN THE FIRST STEP: DIVIDING BY 0 SOMEWHERE IN THE FIRST LOOP WHEN DIVIDING BY OFF-DIAGONAL TERMS?
+
         P.resize(0,0);
-        TensorRank4 MP2Tensor(nbfs,nbfs,nbfs,nbfs);
-        MP2Tensor = OOSpinOrbitalMP2::Basic_convert_ERI_Tensor_AOtospinfreeMO(&Coeffs);//Here, how do I reconcile calculating doubles with the oo format of generating tensor?
+        //TensorRank4 MP2Tensor(nbfs,nbfs,nbfs,nbfs);
+        //MP2Tensor = OOSpinOrbitalMP2::Basic_convert_ERI_Tensor_AOtospinorbitalMO(&Coeffs);//Here, how do I reconcile calculating doubles with the oo format of generating tensor?
         TensorRank4 MP2TensorSO(2*nbfs,2*nbfs,2*nbfs,2*nbfs);
-        MP2TensorSO = OOSpinOrbitalMP2::Basic_convert_ERI_Tensor_SpinfreeMOtoSpinorbitalMO(&MP2Tensor);
+        MP2TensorSO = OOSpinOrbitalMP2::Basic_convert_ERI_Tensor_AOtospinorbitalMO(&Coeffs);//Here, how do I reconcile calculating doubles with the oo format of generating tensor?
+        //MP2TensorSO = OOSpinOrbitalMP2::Basic_convert_ERI_Tensor_SpinfreeMOtoSpinorbitalMO(&MP2Tensor);
         //F_SO = OOSpinOrbitalMP2::fock_spinorbitalbuildforMP2(&F);
 
-        TensorRank4 doublesSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
-
-        doublesSO.setZero();
-
-        TensorRank4 residualSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
 
         double EMP2SO;
 
         int residcounterSO;
+
         for(int s = 1; s < numMP2steps; s++) {
+            TensorRank4 residualSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
             residualSO.setZero();
             residualSO = OOSpinOrbitalMP2::Calculate_MP2_residualsspinorbital(&residcounterSO, residconv, &MP2TensorSO, &doublesSO, &F_SO);
             doublesSO = OOSpinOrbitalMP2::Update_MP2_doublesspinorbital(&doublesSO, &residualSO, &F_SO);
@@ -719,11 +725,17 @@ OOSpinOrbitalMP2::OOSpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd
             std::cout << s << "            " <<  EMP2SO << "        " <<  residcounterSO << std::endl;
         }
         Eigen::MatrixXd one_particle_density = OOSpinOrbitalMP2::build_one_particle_density(&doublesSO);
+        std::cout << "one particle density: " << std::endl << one_particle_density << std::endl;
         TensorRank4 two_particle_density = OOSpinOrbitalMP2::build_two_particle_density(&doublesSO);
+        //std::cout << "two particle density: " << std::endl << two_particle_density << std::endl;
+
         Eigen::MatrixXd orbital_rotation_matrix = OOSpinOrbitalMP2::compute_newton_raphson_step(&F_SO, &two_particle_density, &one_particle_density);
+        std::cout << "orbital_rotation_matrix : " << std::endl << orbital_rotation_matrix << std::endl;
+        std::cout << "Old Coeff Matrix: " << std::endl << Coeffs << std::endl;
         Coeffs = OOSpinOrbitalMP2::rotate_spin_orbital_coefficients(Coeffs, &orbital_rotation_matrix);
+        std::cout << "New Coeff Matrix: " << std::endl << Coeffs << std::endl;
         Eigen::MatrixXd one_electron_integrals = OOSpinOrbitalMP2::rotate_one_electron_integrals(&Coeffs, H_core);//CHECK IF CORRECT H_core!
-        TensorRank4 two_electron_integrals = OOSpinOrbitalMP2::rotate_two_electron_integrals(&Coeffs, eriTensor);//CHECK IF CORRECT ERITENSOR!
+        TensorRank4 two_electron_integrals = OOSpinOrbitalMP2::rotate_two_electron_integrals(&Coeffs, &eriTensorSO);//CHECK IF CORRECT ERITENSOR!
         EOOMP2SO = OOSpinOrbitalMP2::calculate_E_oomp2(&one_particle_density, &two_particle_density, &one_electron_integrals, &two_electron_integrals);
         E_diff = EOOMP2SO - EOOMP2SO_old;
         EOOMP2SO_old = EOOMP2SO;
@@ -732,27 +744,26 @@ OOSpinOrbitalMP2::OOSpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd
             std::cout << "OO converged in " << ss << " steps. OO-MP2 Energy: " << EOOMP2SO << std::endl;
             break;
         }
-        if(abs(E_diff) > E_diff_convergence && ss == numMP2steps - 1){
+        if(abs(E_diff) > E_diff_convergence && ss == numOOMP2steps - 1){
             std::cout << "ERROR: Orbital optimization failed to converge. Increase number of iterations" << std::endl;
             exit(EXIT_FAILURE);
         }
     }
 };
 
-Eigen::MatrixXd OOSpinOrbitalMP2::fock_spinfreebuildforMP2(const Eigen::MatrixXd *P, const Eigen::MatrixXd *Coeffs) {
+Eigen::MatrixXd OOSpinOrbitalMP2::fock_spinfreebuildforMP2(const Eigen::MatrixXd *P, const Eigen::MatrixXd *Coeffs) {//rename to fock_spinorbitalbuildforMP2
     Eigen::MatrixXd F_ao(nbfs, nbfs);
     for (int mu = 0; mu < nbfs; mu++) {
         for (int nu = 0; nu < nbfs; nu++) {
             double integral = 0.0;
             for (int sigma = 0; sigma < 2*nbfs; sigma++) {
                 for (int lamda = 0; lamda < 2*nbfs; lamda++) {
-                    integral += (*P)(lamda,sigma)*(2.0*(eriTensor)(mu,nu,sigma/2,lamda/2)-1.0*(eriTensor)(mu,lamda/2,sigma/2,nu))/2.0;//if I've done this correctly: as the eritensor is in SF and P is in SO, I need to divide the SO index by 2 in the eritensor index, but then I'm double coiunting, so I divide by 2.
+                    integral += (*P)(lamda,sigma)*(2.0*(eriTensor)(mu,nu,sigma/2,lamda/2)-1.0*(eriTensor)(mu,lamda/2,sigma/2,nu))/2.0;//if I've done this correctly: as the eritensor is in SF and P is in SO, I need to divide the SO index by 2 in the eritensor index, but then I'm double counting, so I divide by 2.
                 }
             }
         F_ao(mu,nu) = (H_core)(mu,nu) + integral;
         }
     }
-
     Eigen::MatrixXd F_so = Eigen::MatrixXd::Zero(2*nbfs,2*nbfs);
     for(int p = 0; p < 2*nbfs; p+=2) {
         for(int q = 0; q < 2*nbfs; q+=2) {
@@ -760,8 +771,6 @@ Eigen::MatrixXd OOSpinOrbitalMP2::fock_spinfreebuildforMP2(const Eigen::MatrixXd
                 for(int s = 0; s < nbfs; s++) {
                     if(p/2==r && q/2==s) {
                         F_so(p,q) = (F_ao)(r,s);
-                        F_so(p,q+1) = 0.0;
-                        F_so(p+1,q) = 0.0;
                         F_so(p+1,q+1) = (F_ao)(r,s);
                     }
                 }
@@ -770,7 +779,7 @@ Eigen::MatrixXd OOSpinOrbitalMP2::fock_spinfreebuildforMP2(const Eigen::MatrixXd
     }
     F_ao.resize(0,0);
 
-    Eigen::MatrixXd F_mo = Eigen::MatrixXd::Zero(nbfs,nbfs);
+    Eigen::MatrixXd F_mo = Eigen::MatrixXd::Zero(2*nbfs,2*nbfs);
     for (int i = 0; i < 2*nbfs; i++) {
         for(int j = 0; j < 2*nbfs; j++) {
             for(int k = 0; k < 2*nbfs; k++) {
@@ -791,8 +800,6 @@ Eigen::MatrixXd OOSpinOrbitalMP2::fock_spinorbitalbuildforMP2(const Eigen::Matri
                 for(int s = 0; s < nbfs; s++) {
                     if(p/2==r && q/2==s) {
                         FockSO(p,q) = (*F_mo)(r,s);
-                        FockSO(p,q+1) = 0.0;
-                        FockSO(p+1,q) = 0.0;
                         FockSO(p+1,q+1) = (*F_mo)(r,s);
                     }
                 }
@@ -802,8 +809,9 @@ Eigen::MatrixXd OOSpinOrbitalMP2::fock_spinorbitalbuildforMP2(const Eigen::Matri
     return FockSO;
 }
 
-TensorRank4 OOSpinOrbitalMP2::Basic_convert_ERI_Tensor_AOtospinfreeMO(const Eigen::MatrixXd *Coeffs) {
-    TensorRank4 eriTensorSO(2*nbfs+1, 2*nbfs+1, 2*nbfs+1, 2*nbfs+1);
+TensorRank4 OOSpinOrbitalMP2::Basic_convert_ERI_Tensor_AOtospinorbitalMO(const Eigen::MatrixXd *Coeffs) {//cut this in half, [p/2 will never give decimal, so I don't need different indices for the two tensor sizes]
+    TensorRank4 eriTensorSO(2*nbfs, 2*nbfs, 2*nbfs, 2*nbfs);
+    eriTensorSO.setZero();
     for(int p = 0; p < 2*nbfs; p+=2) {
         for(int q = 0; q < 2*nbfs; q+=2) {
             for(int r = 0; r < 2*nbfs; r+=2) {
@@ -814,20 +822,8 @@ TensorRank4 OOSpinOrbitalMP2::Basic_convert_ERI_Tensor_AOtospinfreeMO(const Eige
                                 for(int l = 0; l < nbfs; l++) {
                                     if(p/2==i && q/2==j && r/2==k && s/2 ==l) {
                                         eriTensorSO(p,q,r,s) = (eriTensor)(i,j,k,l);
-                                        eriTensorSO(p+1,q,r,s) = 0.0;
-                                        eriTensorSO(p,q+1,r,s) = 0.0;
-                                        eriTensorSO(p,q,r+1,s) = 0.0;
-                                        eriTensorSO(p,q,r,s+1) = 0.0;
                                         eriTensorSO(p+1,q+1,r,s) = (eriTensor)(i,j,k,l);
-                                        eriTensorSO(p+1,q,r+1,s) = 0.0;
-                                        eriTensorSO(p+1,q,r,s+1) = 0.0;
-                                        eriTensorSO(p,q+1,r+1,s) = 0.0;
-                                        eriTensorSO(p,q+1,r,s+1) = 0.0;
                                         eriTensorSO(p,q,r+1,s+1) = (eriTensor)(i,j,k,l);
-                                        eriTensorSO(p+1,q+1,r+1,s) = 0.0;                    
-                                        eriTensorSO(p+1,q+1,r,s+1) = 0.0;
-                                        eriTensorSO(p+1,q,r+1,s+1) = 0.0;
-                                        eriTensorSO(p,q+1,r+1,s+1) = 0.0;
                                         eriTensorSO(p+1,q+1,r+1,s+1) = (eriTensor)(i,j,k,l);
                                     }
                                 }
@@ -845,7 +841,7 @@ TensorRank4 OOSpinOrbitalMP2::Basic_convert_ERI_Tensor_AOtospinfreeMO(const Eige
             for(int j = 0; j < 2*nbfs; j++) {
                 for(int k = 0; k < 2*nbfs; k++) {
                     for(int l = 0; l < 2*nbfs; l++) {
-                        TensorStepl(i,j,k,s) += (*Coeffs)(l,s) * (eriTensor)(i,j,k,l);
+                        TensorStepl(i,j,k,s) += (*Coeffs)(l,s) * (eriTensorSO)(i,j,k,l);
                     }
                 }
             }
@@ -883,24 +879,25 @@ TensorRank4 OOSpinOrbitalMP2::Basic_convert_ERI_Tensor_AOtospinfreeMO(const Eige
     }
 
     TensorStepk.clear();
-    TensorRank4 MP2Tensor(2*nbfs, 2*nbfs, 2*nbfs, 2*nbfs); //make a tensor rank 4 to store the two electron integrals--will simplify to compound indexing later
-    MP2Tensor.setZero();
+    TensorRank4 MP2TensorSO(2*nbfs, 2*nbfs, 2*nbfs, 2*nbfs); //make a tensor rank 4 to store the two electron integrals--will simplify to compound indexing later
+    MP2TensorSO.setZero();
     for(int p = 0; p < 2*nbfs; p++) {
         for(int i = 0; i < 2*nbfs; i++) {
             for(int j = 0; j < 2*nbfs; j++) {
                 for(int k = 0; k < 2*nbfs; k++) {
                     for(int l = 0; l < 2*nbfs; l++) {
-                        MP2Tensor(p,j,k,l) += (*Coeffs)(i,p) * TensorStepj(i,j,k,l);
+                        MP2TensorSO(p,j,k,l) += (*Coeffs)(i,p) * TensorStepj(i,j,k,l);
                     }
                 }
             }
         }
     }
-    return MP2Tensor;
+    return MP2TensorSO;
 }
 
 TensorRank4 OOSpinOrbitalMP2::Basic_convert_ERI_Tensor_SpinfreeMOtoSpinorbitalMO(const TensorRank4 *MP2Tensor) {//I could speed this up by setting to 0 rather than populating with 0.0
-    TensorRank4 MP2TensorSO(2*nbfs+1, 2*nbfs+1, 2*nbfs+1, 2*nbfs+1);
+    TensorRank4 MP2TensorSO(2*nbfs, 2*nbfs, 2*nbfs, 2*nbfs);
+    MP2TensorSO.setZero();
     for(int p = 0; p < 2*nbfs; p+=2) {
         for(int q = 0; q < 2*nbfs; q+=2) {
             for(int r = 0; r < 2*nbfs; r+=2) {
@@ -911,20 +908,8 @@ TensorRank4 OOSpinOrbitalMP2::Basic_convert_ERI_Tensor_SpinfreeMOtoSpinorbitalMO
                                 for(int l = 0; l < nbfs; l++) {
                                     if(p/2==i && q/2==j && r/2==k && s/2 ==l) {
                                         MP2TensorSO(p,q,r,s) = (*MP2Tensor)(i,j,k,l);
-                                        MP2TensorSO(p+1,q,r,s) = 0.0;
-                                        MP2TensorSO(p,q+1,r,s) = 0.0;
-                                        MP2TensorSO(p,q,r+1,s) = 0.0;
-                                        MP2TensorSO(p,q,r,s+1) = 0.0;
                                         MP2TensorSO(p+1,q+1,r,s) = (*MP2Tensor)(i,j,k,l);
-                                        MP2TensorSO(p+1,q,r+1,s) = 0.0;
-                                        MP2TensorSO(p+1,q,r,s+1) = 0.0;
-                                        MP2TensorSO(p,q+1,r+1,s) = 0.0;
-                                        MP2TensorSO(p,q+1,r,s+1) = 0.0;
                                         MP2TensorSO(p,q,r+1,s+1) = (*MP2Tensor)(i,j,k,l);
-                                        MP2TensorSO(p+1,q+1,r+1,s) = 0.0;                    
-                                        MP2TensorSO(p+1,q+1,r,s+1) = 0.0;
-                                        MP2TensorSO(p+1,q,r+1,s+1) = 0.0;
-                                        MP2TensorSO(p,q+1,r+1,s+1) = 0.0;
                                         MP2TensorSO(p+1,q+1,r+1,s+1) = (*MP2Tensor)(i,j,k,l);
                                     }
                                 }
@@ -1016,11 +1001,11 @@ Eigen::MatrixXd OOSpinOrbitalMP2::build_one_particle_density(TensorRank4 *double
 
                     for (int k = 0; k < 2*numocc; k++) {//build the occupied one particle density block
                         one_particle_density(j,i) -= 0.5 * (*doubles)(j,a,k,b) * (*doubles)(a,i,b,k);
-                        if( i == j ){
-                            one_particle_density(j,i) += 1.0;
-                        }
                     }
                 }
+            }
+            if( i == j ){
+                one_particle_density(j,i) += 1.0;
             }
         }
     }
@@ -1051,17 +1036,21 @@ Eigen::MatrixXd OOSpinOrbitalMP2::compute_newton_raphson_step(const Eigen::Matri
     Eigen::MatrixXd X_vo = Eigen::MatrixXd::Zero(2*nbfs, 2*nbfs);//calculate newton-raphson step
     for ( int i = 0; i < 2*numocc; i++) {
         for ( int a = 2*numocc; a < 2*nbfs; a++ ) {
-            X_vo(a,i) = ((*Fock)(i,a) - (*Fock)(a,i))/((Evals)(i) - (Evals)(a));
+            X_vo(a,i) = ((*Fock)(i,a) - (*Fock)(a,i))/((Evals)(i/2) - (Evals)(a/2));//POSSIBLE PROBLEM HERE WITH EVALS
         }
     }
+    std::cout << "orbital rotation exponent (non-hermitianized):" << std::endl << X_vo << std::endl <<std::endl;
     Eigen::MatrixXd orbital_rotation_matrix_exponent = X_vo - X_vo.transpose();//build orbital rotation matrix
+    std::cout << "orbital rotation exponent (hermitianized):" << std::endl << orbital_rotation_matrix_exponent << std::endl<< std::endl;
     Eigen::MatrixXd orbital_rotation_matrix = orbital_rotation_matrix_exponent.exp();//both transpose and exp are part of eigen-unsupported
+    //std::cout << "orbital rotation matrix : "<< std::endl << orbital_rotation_matrix << std::endl;
     return orbital_rotation_matrix;
 }
 
 Eigen::MatrixXd OOSpinOrbitalMP2::rotate_spin_orbital_coefficients(Eigen::MatrixXd Coeffs, const Eigen::MatrixXd *orbital_rotation_matrix){
     Eigen::MatrixXd rotated_coeffs = Eigen::MatrixXd::Zero(2*nbfs, 2*nbfs);
-    rotated_coeffs.noalias() += Coeffs * *orbital_rotation_matrix;
+//    rotated_coeffs.noalias() += Coeffs * *orbital_rotation_matrix;
+    rotated_coeffs.noalias() = Coeffs * *orbital_rotation_matrix;
     return rotated_coeffs;
 }
 //Step 10: recreate the one- and two-electron integrals using the rotate coefficients. Use one function Eigen::MatrixXd and another function TensorRank4.
@@ -1077,15 +1066,13 @@ Eigen::MatrixXd OOSpinOrbitalMP2::rotate_one_electron_integrals(const Eigen::Mat
                 for(int s = 0; s < nbfs; s++) {
                     if(p/2==r && q/2==s) {
                         h_core_spin_orbital(p,q) = (*h_core_ao)(r,s);
-                        h_core_spin_orbital(p,q+1) = 0.0;//don't need these, do I?
-                        h_core_spin_orbital(p+1,q) = 0.0;
                         h_core_spin_orbital(p+1,q+1) = (*h_core_ao)(r,s);
                     }
                 }
             }
         }
     }
-    rotated_one_electron_integrals.noalias() += (*rotated_coefficients).transpose() * h_core_spin_orbital * *rotated_coefficients;
+    rotated_one_electron_integrals.noalias() = (*rotated_coefficients).transpose() * h_core_spin_orbital * *rotated_coefficients;//check this isn't an aliasing issue: transposing a reference
     return rotated_one_electron_integrals;
     // compute nuclear-attraction integrals
     //Matrix V = compute_1body_ints(shells, Operator::nuclear, atoms);
@@ -1099,8 +1086,9 @@ Eigen::MatrixXd OOSpinOrbitalMP2::rotate_one_electron_integrals(const Eigen::Mat
 //I JUST REMEMBERED, I need the AO tensor to be in spin-orbital basis to do the tensor rotation, as the rotation matrices are already in spin-orbital basis.
 //THEREFORE, I will convert the AO tensor to spin-orbital AO tensor once, then keep it in memory and rotate it into new tensors every iteration.
 //Those new tensors will go out of scope / be cleared, but the spin-orbital AO tensor will stay in memory, saving us the pain of reconstructing it with every iteration.
+//Hold on. It's faster to reconstruct large memory items than hold them in memory.
 TensorRank4 OOSpinOrbitalMP2::construct_spinorbital_ao_electron_integral_tensor(const TensorRank4 *eriTensor){
-    TensorRank4 eriTensorSO(2*nbfs+1, 2*nbfs+1, 2*nbfs+1, 2*nbfs+1);
+    TensorRank4 eriTensorSO(2*nbfs, 2*nbfs, 2*nbfs, 2*nbfs);
     //eriTensorSO.setZero(); // Use this later to not have to populate with zeros in the loops below.
 
     for(int p = 0; p < 2*nbfs; p+=2) {
@@ -1113,20 +1101,8 @@ TensorRank4 OOSpinOrbitalMP2::construct_spinorbital_ao_electron_integral_tensor(
                                 for(int l = 0; l < nbfs; l++) {
                                     if(p/2==i && q/2==j && r/2==k && s/2 ==l) {
                                         eriTensorSO(p,q,r,s) = (*eriTensor)(i,j,k,l);
-                                        eriTensorSO(p+1,q,r,s) = 0.0;
-                                        eriTensorSO(p,q+1,r,s) = 0.0;
-                                        eriTensorSO(p,q,r+1,s) = 0.0;
-                                        eriTensorSO(p,q,r,s+1) = 0.0;
                                         eriTensorSO(p+1,q+1,r,s) = (*eriTensor)(i,j,k,l);
-                                        eriTensorSO(p+1,q,r+1,s) = 0.0;
-                                        eriTensorSO(p+1,q,r,s+1) = 0.0;
-                                        eriTensorSO(p,q+1,r+1,s) = 0.0;
-                                        eriTensorSO(p,q+1,r,s+1) = 0.0;
                                         eriTensorSO(p,q,r+1,s+1) = (*eriTensor)(i,j,k,l);
-                                        eriTensorSO(p+1,q+1,r+1,s) = 0.0;                    
-                                        eriTensorSO(p+1,q+1,r,s+1) = 0.0;
-                                        eriTensorSO(p+1,q,r+1,s+1) = 0.0;
-                                        eriTensorSO(p,q+1,r+1,s+1) = 0.0;
                                         eriTensorSO(p+1,q+1,r+1,s+1) = (*eriTensor)(i,j,k,l);
                                     }
                                 }

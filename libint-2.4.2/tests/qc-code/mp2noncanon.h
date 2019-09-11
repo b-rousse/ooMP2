@@ -93,7 +93,7 @@ class OOSpinOrbitalMP2{
     
     Eigen::MatrixXd fock_spinorbitalbuildforMP2(const Eigen::MatrixXd *F_mo);
 
-    TensorRank4 Basic_convert_ERI_Tensor_AOtospinfreeMO(const Eigen::MatrixXd *Coeffs);
+    TensorRank4 Basic_convert_ERI_Tensor_AOtospinorbitalMO(const Eigen::MatrixXd *Coeffs);
 
     TensorRank4 Basic_convert_ERI_Tensor_SpinfreeMOtoSpinorbitalMO(const TensorRank4 *MP2Tensor);
 

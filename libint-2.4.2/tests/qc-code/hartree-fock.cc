@@ -968,12 +968,14 @@ int main(int argc, char *argv[]) {
     Eigen::VectorXd E_orb;
     
     Eigen::MatrixXd C = hartree_fock(enuc, nao, ndocc, S, H_core, g, E_orb);
+    std::cout << "Hartree Fock code Evals size : " << E_orb.size() << std::endl;
     Eigen::MatrixXd C_occ(nao,ndocc);
     
     double EMP2=0.0;
     //SpinOrbitalMP2 MyMP2Instance(&g, &C, nao, ndocc, &E_orb, &H_core_forMP2, &S_forMP2);
     //SpinFreeMP2 MySpinFreeMP2Instance(&g, &C, nao, ndocc, &E_orb, &H_core_forMP2, &S_forMP2);
     OOSpinOrbitalMP2 MyOOMP2Instance(&g, C, nao, ndocc, &E_orb, &H_core_forMP2, &S_forMP2);
+    
     //EMP2=RunMP2spinfreenoncanon(&g, &C, nao, ndocc, &E_orb, &H_core_forMP2, &S_forMP2);
     ////EMP2=RunMP2spinorbitalnoncanon(&g, &C, nao, ndocc, &E_orb, &H_core_forMP2, &S_forMP2);
     //std::cout << "MP2 correction: " << EMP2 << endl;
