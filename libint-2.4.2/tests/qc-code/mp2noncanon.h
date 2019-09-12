@@ -89,6 +89,8 @@ class OOSpinOrbitalMP2{
 
     OOSpinOrbitalMP2(const TensorRank4 *eriTensor, const Eigen::MatrixXd SFCoeffs, const int nbfs, const int numocc, Eigen::VectorXd *Evals, Eigen::MatrixXd *H_core, const Eigen::MatrixXd *S);
 
+    Eigen::MatrixXd construct_generalized_fock(const TensorRank4 *eriTensorSO, const Eigen::MatrixXd *H_core, const Eigen::MatrixXd *one_particle_density, const TensorRank4 *two_particle_density);
+
     Eigen::MatrixXd fock_spinfreebuildforMP2(const Eigen::MatrixXd *P, const Eigen::MatrixXd *Coeffs);
     
     Eigen::MatrixXd fock_spinorbitalbuildforMP2(const Eigen::MatrixXd *F_mo);

@@ -655,10 +655,8 @@ OOSpinOrbitalMP2::OOSpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd
     double EOOMP2SO_old = 0.0;
     double E_diff_convergence = 0.0000001;
     int numMP2steps = 100;
-    int numOOMP2steps = 1;
-    double E_diff;
+    int numOOMP2steps = 3;
     double residconv = 0.00000000001;
-    std::cout << "Iteration         EMP2SO        residcounterSO" << std::endl;
     //std::cout << "Evals: " << std::endl << *Evals << std::endl;
     //stretch first Coeffs before usage. Or... do the first iter outside of loop 
     //HERE IS WHERE THE ORBITAL OPTIMIZATION LOOP SHOULD BEGIN
@@ -676,13 +674,16 @@ OOSpinOrbitalMP2::OOSpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd
         }
     }
     TensorRank4 eriTensorSO = OOSpinOrbitalMP2::construct_spinorbital_ao_electron_integral_tensor(eriTensor);//this should be untouched AO tensor.
+    TensorRank4 two_electron_integrals = eriTensorSO;//HUGE WASTE OF MEMORY.
     TensorRank4 doublesSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
-    doublesSO.setZero();
+    doublesSO.setZero();//PUT INSIDE OR OUTSIDE ss LOOP?
+
 
     //
     //START OO LOOP
     //
     for(int ss = 0; ss < numOOMP2steps; ss++){
+        //doublesSO.setZero();//PUT INSIDE OR OUTSIDE ss LOOP?
         Eigen::MatrixXd P = Eigen::MatrixXd::Zero(2*nbfs,2*nbfs);//density reconstructed from coefficients: needed to construct fock matrix which is in turn needed for non-canonical MP2
         for(int i = 0; i < 2*nbfs; i++) {
             for(int j = 0; j < 2*nbfs; j++) {
@@ -691,11 +692,16 @@ OOSpinOrbitalMP2::OOSpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd
                 }
             }
         }
-        std::cout << "P Matrix: " << std::endl << P << std::endl;
+        //std::cout << "P Matrix: " << std::endl << P << std::endl;
         //Eigen::MatrixXd F = Eigen::MatrixXd::Zero(nbfs,nbfs);
         Eigen::MatrixXd F_SO = Eigen::MatrixXd::Zero(2*nbfs,2*nbfs);
-        F_SO = OOSpinOrbitalMP2::fock_spinfreebuildforMP2(&P, &Coeffs);
-        std::cout << "F_SO = spinorbital rotated Fock Matrix: " << std::endl << F_SO << std::endl;//THIS IS DIAGONAL IN THE FIRST STEP: DIVIDING BY 0 SOMEWHERE IN THE FIRST LOOP WHEN DIVIDING BY OFF-DIAGONAL TERMS?
+        if(ss == 0){
+            F_SO = OOSpinOrbitalMP2::fock_spinfreebuildforMP2(&P, &Coeffs);
+        }
+        else{
+            F_SO =- 
+        }
+        //std::cout << "F_SO = spinorbital rotated Fock Matrix: " << std::endl << F_SO << std::endl;//THIS IS DIAGONAL IN THE FIRST STEP: DIVIDING BY 0 SOMEWHERE IN THE FIRST LOOP WHEN DIVIDING BY OFF-DIAGONAL TERMS?
 
         P.resize(0,0);
         //TensorRank4 MP2Tensor(nbfs,nbfs,nbfs,nbfs);
@@ -707,37 +713,52 @@ OOSpinOrbitalMP2::OOSpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd
 
 
         double EMP2SO;
+        
 
-        int residcounterSO;
-
+        int residcounterSO = 0;
+        //std::cout << "Coeff sum: " << std::endl << Coeffs << std::endl;
+        std::cout << "Iteration         EMP2SO        residcounterSO" << std::endl;
+        
         for(int s = 1; s < numMP2steps; s++) {
             TensorRank4 residualSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
+
             residualSO.setZero();
             residualSO = OOSpinOrbitalMP2::Calculate_MP2_residualsspinorbital(&residcounterSO, residconv, &MP2TensorSO, &doublesSO, &F_SO);
             doublesSO = OOSpinOrbitalMP2::Update_MP2_doublesspinorbital(&doublesSO, &residualSO, &F_SO);
             EMP2SO = OOSpinOrbitalMP2::Spinorbital_EMP2(&MP2TensorSO, &doublesSO);
             //OOEMP2SO = OOSpinOrbitalMP2::calculate_E_oomp2(&one_particle_density, &two_particle_density, &rotated_one_electron_integrals, &rotated_two_electron_integrals);
+            std::cout << s << "            " <<  EMP2SO << "        " <<  residcounterSO << std::endl;
             if (residcounterSO == 0) {break;}
             if (residcounterSO > 0 && s == numMP2steps - 1) {
                 std::cout << "Error: Unable to converge doubles in non-canonical MP2. Increase numMP2steps." << std::endl;
                 exit(EXIT_FAILURE);
             }
-            std::cout << s << "            " <<  EMP2SO << "        " <<  residcounterSO << std::endl;
         }
         Eigen::MatrixXd one_particle_density = OOSpinOrbitalMP2::build_one_particle_density(&doublesSO);
-        std::cout << "one particle density: " << std::endl << one_particle_density << std::endl;
+        //std::cout << "one particle density: " << std::endl << one_particle_density << std::endl;
         TensorRank4 two_particle_density = OOSpinOrbitalMP2::build_two_particle_density(&doublesSO);
         //std::cout << "two particle density: " << std::endl << two_particle_density << std::endl;
-
-        Eigen::MatrixXd orbital_rotation_matrix = OOSpinOrbitalMP2::compute_newton_raphson_step(&F_SO, &two_particle_density, &one_particle_density);
-        std::cout << "orbital_rotation_matrix : " << std::endl << orbital_rotation_matrix << std::endl;
-        std::cout << "Old Coeff Matrix: " << std::endl << Coeffs << std::endl;
-        Coeffs = OOSpinOrbitalMP2::rotate_spin_orbital_coefficients(Coeffs, &orbital_rotation_matrix);
-        std::cout << "New Coeff Matrix: " << std::endl << Coeffs << std::endl;
+        Eigen::MatrixXd H_core_SO = OOSpinOrbitalMP2::fock_spinorbitalbuildforMP2(H_core);//does this change?
+        Eigen::MatrixXd Gen_fock = Eigen::MatrixXd::Zero(2*nbfs,2*nbfs);
+        if(ss == 0){
+            Gen_fock = OOSpinOrbitalMP2::construct_generalized_fock(&eriTensorSO, &H_core_SO, &one_particle_density, &two_particle_density);
+        }
+        else {
+            Gen_fock = OOSpinOrbitalMP2::construct_generalized_fock(&two_electron_integrals, &H_core_SO, &one_particle_density, &two_particle_density);
+        }
+        //H_core_SO.resize(0,0);
+        Eigen::MatrixXd orbital_rotation_matrix = OOSpinOrbitalMP2::compute_newton_raphson_step(&Gen_fock, &two_particle_density, &one_particle_density);
+        //std::cout << "orbital_rotation_matrix : " << std::endl << orbital_rotation_matrix << std::endl;
+        //std::cout << "Old Coeff Matrix: " << std::endl << Coeffs << std::endl;
+        Eigen::MatrixXd TempCoeffs = Eigen::MatrixXd::Zero(2*nbfs,2*nbfs);
+        TempCoeffs = OOSpinOrbitalMP2::rotate_spin_orbital_coefficients(Coeffs, &orbital_rotation_matrix);
+        Coeffs = TempCoeffs;
+        TempCoeffs.resize(0,0);
+        //std::cout << "New Coeff Matrix: " << std::endl << Coeffs << std::endl;
         Eigen::MatrixXd one_electron_integrals = OOSpinOrbitalMP2::rotate_one_electron_integrals(&Coeffs, H_core);//CHECK IF CORRECT H_core!
-        TensorRank4 two_electron_integrals = OOSpinOrbitalMP2::rotate_two_electron_integrals(&Coeffs, &eriTensorSO);//CHECK IF CORRECT ERITENSOR!
+        two_electron_integrals = OOSpinOrbitalMP2::rotate_two_electron_integrals(&Coeffs, &eriTensorSO);//CHECK IF CORRECT ERITENSOR!
         EOOMP2SO = OOSpinOrbitalMP2::calculate_E_oomp2(&one_particle_density, &two_particle_density, &one_electron_integrals, &two_electron_integrals);
-        E_diff = EOOMP2SO - EOOMP2SO_old;
+        double E_diff = EOOMP2SO - EOOMP2SO_old;
         EOOMP2SO_old = EOOMP2SO;
         std::cout << "Energy of OOMP2 at step " << ss << " is " << EOOMP2SO << std::endl;
         if(abs(E_diff) < E_diff_convergence) {
@@ -750,6 +771,9 @@ OOSpinOrbitalMP2::OOSpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd
         }
     }
 };
+
+
+
 
 Eigen::MatrixXd OOSpinOrbitalMP2::fock_spinfreebuildforMP2(const Eigen::MatrixXd *P, const Eigen::MatrixXd *Coeffs) {//rename to fock_spinorbitalbuildforMP2
     Eigen::MatrixXd F_ao(nbfs, nbfs);
@@ -989,6 +1013,23 @@ TensorRank4 OOSpinOrbitalMP2::Update_MP2_doublesspinorbital(TensorRank4 *doubles
     return *doubles;
 }
 
+Eigen::MatrixXd OOSpinOrbitalMP2::construct_generalized_fock(const TensorRank4 *eriTensorSO, const Eigen::MatrixXd *H_core_SO, const Eigen::MatrixXd *one_particle_density, const TensorRank4 *two_particle_density){
+    Eigen::MatrixXd gen_fock = Eigen::MatrixXd::Zero(2*nbfs,2*nbfs);
+    for (int p = 0; p < 2*nbfs; p++){
+        for(int q = 0; q < 2*nbfs; q++){
+            for (int r = 0; r < 2*nbfs; r++){
+                for(int s = 0; s < 2*nbfs; s++){
+                    for (int t = 0; t < 2*nbfs; t++){
+                        gen_fock(p,q) += (*H_core_SO)(p,r) * (*one_particle_density)(r,q) + 0.5*((*eriTensorSO)(p,s,r,t) - (*eriTensorSO)(p,t,r,s));
+                    }
+                }
+            }
+        }
+    }
+    return gen_fock;
+}
+
+
 Eigen::MatrixXd OOSpinOrbitalMP2::build_one_particle_density(TensorRank4 *doubles){
     Eigen::MatrixXd one_particle_density = Eigen::MatrixXd::Zero(2*nbfs,2*nbfs);
     for (int i = 0; i < 2*numocc; i++) {
@@ -1031,17 +1072,19 @@ TensorRank4 OOSpinOrbitalMP2::build_two_particle_density(TensorRank4 *doubles){
 }
 
 //Compute the Newton-Raphson orbital rotation matrix
-Eigen::MatrixXd OOSpinOrbitalMP2::compute_newton_raphson_step(const Eigen::MatrixXd *Fock, const TensorRank4 *two_particle_density, const Eigen::MatrixXd *one_particle_density){
+Eigen::MatrixXd OOSpinOrbitalMP2::compute_newton_raphson_step(const Eigen::MatrixXd *GenFock, const TensorRank4 *two_particle_density, const Eigen::MatrixXd *one_particle_density){
     //Eigen::MatrixXd step7_f(); // This is just the fock matrix in second quantization, and I can just pass to this function (or class if it ends up being inside one) the build_fock subroutine.
     Eigen::MatrixXd X_vo = Eigen::MatrixXd::Zero(2*nbfs, 2*nbfs);//calculate newton-raphson step
     for ( int i = 0; i < 2*numocc; i++) {
         for ( int a = 2*numocc; a < 2*nbfs; a++ ) {
-            X_vo(a,i) = ((*Fock)(i,a) - (*Fock)(a,i))/((Evals)(i/2) - (Evals)(a/2));//POSSIBLE PROBLEM HERE WITH EVALS
+        //    X_vo(a,i) = ((*Fock)(i,a) - (*Fock)(a,i))/((Evals)(i) - (Evals)(a));//POSSIBLE PROBLEM HERE WITH EVALS
+        //    X_vo(a,i) = ((*Fock)(i,a) - (*Fock)(a,i))/((Evals)(i/2) - (Evals)(a/2));//POSSIBLE PROBLEM HERE WITH EVALS
+            X_vo(a,i) = ((*GenFock)(i,a) - (*GenFock)(a,i))/((*GenFock)(i,i) - (*GenFock)(a,a));//Is this a workaround that will allow updates to equivalent of Evals?
         }
     }
-    std::cout << "orbital rotation exponent (non-hermitianized):" << std::endl << X_vo << std::endl <<std::endl;
+    //std::cout << "orbital rotation exponent (non-hermitianized):" << std::endl << X_vo << std::endl <<std::endl;
     Eigen::MatrixXd orbital_rotation_matrix_exponent = X_vo - X_vo.transpose();//build orbital rotation matrix
-    std::cout << "orbital rotation exponent (hermitianized):" << std::endl << orbital_rotation_matrix_exponent << std::endl<< std::endl;
+    //std::cout << "orbital rotation exponent (hermitianized):" << std::endl << orbital_rotation_matrix_exponent << std::endl<< std::endl;
     Eigen::MatrixXd orbital_rotation_matrix = orbital_rotation_matrix_exponent.exp();//both transpose and exp are part of eigen-unsupported
     //std::cout << "orbital rotation matrix : "<< std::endl << orbital_rotation_matrix << std::endl;
     return orbital_rotation_matrix;
@@ -1151,11 +1194,12 @@ double OOSpinOrbitalMP2::calculate_E_oomp2(const Eigen::MatrixXd *one_particle_d
             }
         }
     }
+    /*
     for(int i = 0; i < 2*nbfs; i++) {
         for(int j = 0; j < 2*nbfs; j++) {
             EMP2 += (*rotated_one_electron_integrals)(i,j)*(*one_particle_density)(j,i);
         }
-    }
+    }*/
     return EMP2;
 }
 
