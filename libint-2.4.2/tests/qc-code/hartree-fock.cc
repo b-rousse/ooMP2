@@ -858,7 +858,7 @@ int main(int argc, char *argv[]) {
     // read geometry from a file; by default read from h2o.xyz, else take filename (.xyz) from the command line
     //const auto filename = "qc-code/h2o-crawford.xyz";
     const auto filename = (argc > 1) ? argv[1] : "qc-code/h2o-gaussian.xyz";
-    std::string basis_set = "blah";
+    std::string basis_set = "sto-3g";
     //std::string basis_set = "cc-pVDZ";
 
     //const std::string filename;
@@ -966,7 +966,6 @@ int main(int argc, char *argv[]) {
     TensorRank4 g = compute_2body_ints(shells);
 
     Eigen::VectorXd E_orb;
-    
     Eigen::MatrixXd C = hartree_fock(enuc, nao, ndocc, S, H_core, g, E_orb);
     std::cout << "Hartree Fock code Evals size : " << E_orb.size() << std::endl;
     Eigen::MatrixXd C_occ(nao,ndocc);
@@ -974,7 +973,7 @@ int main(int argc, char *argv[]) {
     double EMP2=0.0;
     //SpinOrbitalMP2 MyMP2Instance(&g, &C, nao, ndocc, &E_orb, &H_core_forMP2, &S_forMP2);
     //SpinFreeMP2 MySpinFreeMP2Instance(&g, &C, nao, ndocc, &E_orb, &H_core_forMP2, &S_forMP2);
-    OOSpinOrbitalMP2 MyOOMP2Instance(&g, C, nao, ndocc, &E_orb, &H_core_forMP2, &S_forMP2);
+    OOSpinOrbitalMP2 MyOOMP2Instance(&g, C, nao, ndocc, &E_orb, &H_core_forMP2, &S_forMP2, enuc);
     
     //EMP2=RunMP2spinfreenoncanon(&g, &C, nao, ndocc, &E_orb, &H_core_forMP2, &S_forMP2);
     ////EMP2=RunMP2spinorbitalnoncanon(&g, &C, nao, ndocc, &E_orb, &H_core_forMP2, &S_forMP2);
