@@ -1489,7 +1489,7 @@ Eigen::MatrixXd SpinOrbitalCCD::construct_one_particle_intermediate(const Eigen:
             for(int i = 0; i < 2*numocc; i++){
                 for(int j = 0; j < 2*numocc; j++){
                     for(int c = 2*numocc; c < 2*nbfs; c++){
-                        one_particle_intermediate(a,b) -= 0.5 * doublesSO(a,i,c,j) * (two_electron_integrals(i,b,j,c) - two_electron_integrals(i,c,j,b));
+                        one_particle_intermediate(a,b) -= 0.5 * doublesSO(i,a-2*numocc,j,c-2*numocc) * (two_electron_integrals(i,b,j,c) - two_electron_integrals(i,c,j,b));
                     }
                 }
             }
@@ -1503,7 +1503,7 @@ Eigen::MatrixXd SpinOrbitalCCD::construct_one_particle_intermediate(const Eigen:
             for(int k = 0; k < 2*numocc; k++){
                 for(int a = 2*numocc; a < 2*nbfs; a++){
                     for(int b = 2*numocc; b < 2*nbfs; b++){
-                        one_particle_intermediate(j,i) += 0.5 * doublesSO(a,i,b,k) * (two_electron_integrals(j,a,k,b) - two_electron_integrals(j,b,k,a));
+                        one_particle_intermediate(j,i) += 0.5 * doublesSO(i,a-2*numocc,k,b-2*numocc) * (two_electron_integrals(j,a,k,b) - two_electron_integrals(j,b,k,a));
                     }
                 }
             }
@@ -1530,7 +1530,7 @@ TensorRank4 SpinOrbitalCCD::construct_two_particle_intermediate(const TensorRank
                     two_particle_intermediate(k,i,l,j) = two_electron_integrals(k,i,l,j) - two_electron_integrals(k,j,l,i);
                     for(int a = 2*numocc; a < 2*nbfs; a++){
                         for(int b = 2*numocc; b < 2*nbfs; b++){
-                            two_particle_intermediate(k,i,l,j) += 0.25 * doublesSO(a,i,b,j) * (two_electron_integrals(k,a,l,b) - two_electron_integrals(k,b,l,a));
+                            two_particle_intermediate(k,i,l,j) += 0.25 * doublesSO(i,a-2*numocc,j,b-2*numocc) * (two_electron_integrals(k,a,l,b) - two_electron_integrals(k,b,l,a));
                         }
                     }
                 }
@@ -1541,7 +1541,7 @@ TensorRank4 SpinOrbitalCCD::construct_two_particle_intermediate(const TensorRank
                     two_particle_intermediate(i,a,b,j) = two_electron_integrals(i,a,b,j) - two_electron_integrals(i,j,b,a);
                     for(int k = 0; k < 2*numocc; k++){
                         for(int c = 2*numocc; c < 2*nbfs; c++){
-                            two_particle_intermediate(i,a,b,j) -= 0.5 * doublesSO(c,j,b,k) * (two_electron_integrals(i,a,k,c) - two_electron_integrals(i,c,k,a));
+                            two_particle_intermediate(i,a,b,j) -= 0.5 * doublesSO(j,c-2*numocc,k,b-2*numocc) * (two_electron_integrals(i,a,k,c) - two_electron_integrals(i,c,k,a));
                         }
                     }
                 }
@@ -1556,7 +1556,7 @@ TensorRank4 SpinOrbitalCCD::construct_two_particle_intermediate(const TensorRank
                     two_particle_intermediate(a,c,b,d) = two_electron_integrals(a,c,b,d) - two_electron_integrals(a,d,b,c);
                     for(int i = 0; i < 2*numocc; i++){
                         for(int j = 0; j < 2*numocc; j++){
-                            two_particle_intermediate(a,c,b,d) += 0.25 * doublesSO(a,i,b,j) * (two_electron_integrals(i,c,j,d) - two_electron_integrals(i,d,j,c));
+                            two_particle_intermediate(a,c,b,d) += 0.25 * doublesSO(i,a-2*numocc,j,b-2*numocc) * (two_electron_integrals(i,c,j,d) - two_electron_integrals(i,d,j,c));
                         }
                     }
                 }
