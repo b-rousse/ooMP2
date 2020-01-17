@@ -1429,8 +1429,8 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
     
     int count = -1;
     bool DIIS_time = false;
-    int DIIS_num_iters = 4;
-    double DIIS_threshhold = 1e-6;
+    int DIIS_num_iters = 6;
+    double DIIS_threshhold = 1e-5;
     bool use_DIIS=true;
 
     std::vector<Eigen::VectorXd> DIIS_vectors;
@@ -1438,6 +1438,8 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
     std::vector<TensorRank4> DIIS_Tensors(0, TensorRank4(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc));
     std::vector<double> DIIS_energies;
     Eigen::MatrixXd DIIS_error_matrix = Eigen::MatrixXd::Zero(DIIS_num_iters+1, DIIS_num_iters+1);
+    int DIIS_relaxation_stride = 0;//set zero for full DIIS routine. Scuseria, Lee, Schaefer Chem Phys Lett 1896 recommend a stride of 2 or 3.
+    int count_since_last_DIIS = DIIS_relaxation_stride;
     std::cout << "CCD" << std::endl;
     while(residcounterSO > 0) {
         count++;
@@ -1466,13 +1468,18 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
             if(count > DIIS_num_iters - 1 && fabs(diff_E) < DIIS_threshhold){
                 DIIS_time = true;
             }
+            if(count_since_last_DIIS < DIIS_relaxation_stride){
+                DIIS_time = false;
+                count_since_last_DIIS++;
+            }
         }
         
         //USE DIIS GUESS TO UPDATE??
-        Eigen::MatrixXd one_particle_intermediate = SpinOrbitalCCD::construct_one_particle_intermediate(F_SO, doublesSO, two_electron_integrals);
-        TensorRank4 two_particle_intermediate = SpinOrbitalCCD::construct_two_particle_intermediate(doublesSO, two_electron_integrals);
+        //Eigen::MatrixXd one_particle_intermediate = SpinOrbitalCCD::construct_one_particle_intermediate(F_SO, doublesSO, two_electron_integrals);
+        //TensorRank4 two_particle_intermediate = SpinOrbitalCCD::construct_two_particle_intermediate(doublesSO, two_electron_integrals);
 
         if(DIIS_time){
+            count_since_last_DIIS = 0;
             //std::cout << "DIIS being used " << std::endl;
             for(int i = 0 ; i < DIIS_num_iters; i++){
                 for(int j = 0; j < DIIS_num_iters; j++){
@@ -1518,8 +1525,8 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
                 }
             }
             //std::cout << "Fine on count " << count << " at point 2" << std::endl;
-            //Eigen::MatrixXd one_particle_intermediate = SpinOrbitalCCD::construct_one_particle_intermediate(F_SO, DIIS_doublesSO, two_electron_integrals);
-            //TensorRank4 two_particle_intermediate = SpinOrbitalCCD::construct_two_particle_intermediate(DIIS_doublesSO, two_electron_integrals);
+            Eigen::MatrixXd one_particle_intermediate = SpinOrbitalCCD::construct_one_particle_intermediate(F_SO, DIIS_doublesSO, two_electron_integrals);
+            TensorRank4 two_particle_intermediate = SpinOrbitalCCD::construct_two_particle_intermediate(DIIS_doublesSO, two_electron_integrals);
             residualSO.setZero();
             residualSO = SpinOrbitalCCD::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &DIIS_doublesSO, &F_SO, two_particle_intermediate);            
             DIIS_doublesSO.clear();
@@ -1529,8 +1536,8 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
 
 
         if(!DIIS_time){//If use_DIIS is false, this section is automatically called as DIIS_time will never be true.
-            //Eigen::MatrixXd one_particle_intermediate = SpinOrbitalCCD::construct_one_particle_intermediate(F_SO, doublesSO, two_electron_integrals);
-            //TensorRank4 two_particle_intermediate = SpinOrbitalCCD::construct_two_particle_intermediate(doublesSO, two_electron_integrals);
+            Eigen::MatrixXd one_particle_intermediate = SpinOrbitalCCD::construct_one_particle_intermediate(F_SO, doublesSO, two_electron_integrals);
+            TensorRank4 two_particle_intermediate = SpinOrbitalCCD::construct_two_particle_intermediate(doublesSO, two_electron_integrals);
             residualSO.setZero();
             residualSO = SpinOrbitalCCD::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &doublesSO, &F_SO, two_particle_intermediate);
             doublesSO = SpinOrbitalCCD::update_doubles_so(&doublesSO, &residualSO, &F_SO);
