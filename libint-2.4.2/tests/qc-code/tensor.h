@@ -62,6 +62,23 @@ public:
     return data_(index(i, j, k, l));
   }
 
+  Eigen::VectorXd resizeR4TensortoVector(const TensorRank4 &t_dim4, int dim0, int dim1, int dim2, int dim3){
+    Eigen::VectorXd myvec;
+    myvec.resize(dim0 * dim1 * dim2 * dim3);
+    int count = 0;
+    for(int i = 0; i < dim0; i++){
+      for(int j = 0; j < dim1; j++){
+        for(int k = 0; k < dim2; k++){
+          for(int l = 0; l < dim3; l++){
+            myvec(count)=t_dim4(i,j,k,l);
+            count++;
+          }
+        }
+      }
+    }
+    return myvec;
+  }
+
   void setZero() { data_.setZero();}
   void clear() {
        data_.resize(0);
