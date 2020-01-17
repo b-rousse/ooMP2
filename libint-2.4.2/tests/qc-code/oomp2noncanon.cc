@@ -1429,7 +1429,9 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
     
     int count = -1;
     bool DIIS_time = false;
-    int DIIS_num_iters = 6;
+    int DIIS_num_iters = 3;//Scuseria, Lee, Schaefer Chem Phys Lett 1896 recommend 8
+    int DIIS_relaxation_stride = 0;//set zero for full DIIS routine. Scuseria, Lee, Schaefer Chem Phys Lett 1896 recommend a stride of 2 or 3.
+    int count_since_last_DIIS = DIIS_relaxation_stride;
     double DIIS_threshhold = 1e-5;
     bool use_DIIS=true;
 
@@ -1438,8 +1440,6 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
     std::vector<TensorRank4> DIIS_Tensors(0, TensorRank4(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc));
     std::vector<double> DIIS_energies;
     Eigen::MatrixXd DIIS_error_matrix = Eigen::MatrixXd::Zero(DIIS_num_iters+1, DIIS_num_iters+1);
-    int DIIS_relaxation_stride = 0;//set zero for full DIIS routine. Scuseria, Lee, Schaefer Chem Phys Lett 1896 recommend a stride of 2 or 3.
-    int count_since_last_DIIS = DIIS_relaxation_stride;
     std::cout << "CCD" << std::endl;
     while(residcounterSO > 0) {
         count++;
