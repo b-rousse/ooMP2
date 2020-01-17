@@ -1440,11 +1440,13 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
     std::vector<TensorRank4> DIIS_Tensors(0, TensorRank4(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc));
     std::vector<double> DIIS_energies;
     Eigen::MatrixXd DIIS_error_matrix = Eigen::MatrixXd::Zero(DIIS_num_iters+1, DIIS_num_iters+1);
+    
     std::cout << "CCD" << std::endl;
     while(residcounterSO > 0) {
         count++;
         Eigen::VectorXd x;
         residcounterSO = 0;
+
         if(use_DIIS){
             //if(count < DIIS_num_iters){
             //  DIIS_energies[count % DIIS_num_iters] = E_NEO_OOMP2;
@@ -1473,7 +1475,6 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
                 count_since_last_DIIS++;
             }
         }
-        
         //USE DIIS GUESS TO UPDATE??
         //Eigen::MatrixXd one_particle_intermediate = SpinOrbitalCCD::construct_one_particle_intermediate(F_SO, doublesSO, two_electron_integrals);
         //TensorRank4 two_particle_intermediate = SpinOrbitalCCD::construct_two_particle_intermediate(doublesSO, two_electron_integrals);
@@ -1533,8 +1534,6 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
             doublesSO = SpinOrbitalCCD::update_doubles_so(&doublesSO, &residualSO, &F_SO);
         }
 
-
-
         if(!DIIS_time){//If use_DIIS is false, this section is automatically called as DIIS_time will never be true.
             Eigen::MatrixXd one_particle_intermediate = SpinOrbitalCCD::construct_one_particle_intermediate(F_SO, doublesSO, two_electron_integrals);
             TensorRank4 two_particle_intermediate = SpinOrbitalCCD::construct_two_particle_intermediate(doublesSO, two_electron_integrals);
@@ -1542,37 +1541,24 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
             residualSO = SpinOrbitalCCD::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &doublesSO, &F_SO, two_particle_intermediate);
             doublesSO = SpinOrbitalCCD::update_doubles_so(&doublesSO, &residualSO, &F_SO);
         }
-        //Eigen::MatrixXd rdm1e_hf = SpinOrbitalCCD::build_one_particle_density_hf();
-        //Eigen::MatrixXd rdm1e_mp2 = SpinOrbitalCCD::build_one_particle_density_ccd(&doublesSO);
-        //Eigen::MatrixXd one_particle_density = SpinOrbitalCCD::build_total_one_particle_density(rdm1e_hf, rdm1e_mp2);
         
-        //std::cout << " one particle density: " << std::endl << one_particle_density << std::endl;
-        //std::cout << " one electron integral: " << std::endl << one_electron_integrals << std::endl;
-        //TensorRank4 two_particle_density = SpinOrbitalCCD::build_two_particle_density(&doublesSO, rdm1e_hf, rdm1e_mp2);
-        //EMP2SO = enuc;
-        //EMP2SO += OOSpinOrbitalMP2::Spinorbital_EMP2(&MP2TensorSO, &two_particle_density, &one_electron_integrals, &one_particle_density);
         E_ccd = enuc ;
         E_ccd += SpinOrbitalCCD::canonical_E_ee_so(two_electron_integrals, doublesSO);
         diff_E = E_ccd - old_E;
         old_E = E_ccd;
-        //E_ccd = SpinOrbitalCCD::calculate_E_ccd(&one_particle_density, &two_particle_density, &one_electron_integrals, &two_electron_integrals);
+
         if(DIIS_time){
             printf("%i        %20.12f          %i        DIIS\n", count, E_ccd,residcounterSO);
         }
         if(!DIIS_time){
             printf("%i        %20.12f          %i\n", count, E_ccd,residcounterSO);
         }
-        //std::cout << count << "            " <<  EMP2SO << "        " << OOEMP2SO << "        "  <<  residcounterSO << std::endl;
+
         if (count == numMP2steps - 1) {
             std::cout << "Error: Unable to converge doubles in CCD." << std::endl;
             exit(EXIT_FAILURE);
         }
     }
-
-    //
-    //START OO LOOP. WON'T NEED THIS FOR CCD.
-    //
-    
 };
 
 double SpinOrbitalCCD::canonical_E_ee_so(const TensorRank4 &two_electron_integrals, const TensorRank4 &doublesSO){
