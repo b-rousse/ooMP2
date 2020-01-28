@@ -1431,13 +1431,13 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
     int count =-1;
     
     bool DIIS_time = false;
-    int DIIS_num_iters = 8;//Scuseria, Lee, Schaefer Chem Phys Lett 1896 recommend 8
+    int DIIS_num_iters = 10;//Scuseria, Lee, Schaefer Chem Phys Lett 1896 recommend 8
     int effective_DIIS_num_iters = 0;//for count < DIIS_num_iters, we want to use DIIS if energy threshhold is passed. So we need an expanding DIIS infrastructure that caps at DIIS_num_iters
     int DIIS_relaxation_stride = 0;//set zero for full DIIS routine. Scuseria, Lee, Schaefer Chem Phys Lett 1896 recommend a stride of 2 or 3.
     int count_since_last_DIIS = DIIS_relaxation_stride;
     double DIIS_storage_threshhold = 1e-0;
     double DIIS_threshhold = 1e-0;
-    bool use_DIIS=true;
+    bool use_DIIS=false;
 
     std::vector<Eigen::VectorXd> DIIS_vectors;
     std::vector<Eigen::VectorXd> DIIS_error_vectors;
@@ -1445,9 +1445,10 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
     std::vector<double> DIIS_energies;
     Eigen::MatrixXd DIIS_error_matrix;
     bool unorthodox_error_construction = false;
+    bool stanton_CCD = true;
     //Eigen::MatrixXd DIIS_error_matrix = Eigen::MatrixXd::Zero(DIIS_num_iters+1, DIIS_num_iters+1);
     std::cout << "CCD" << std::endl;
-    while(residcounterSO > 0) {
+    while(abs(diff_E) > tol_E) {
         count++;
         Eigen::VectorXd x;
         residcounterSO = 0;
@@ -1479,12 +1480,12 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
             }
             //std::cout << "Size of DIIS_error_vectors at count " << count << " is " << DIIS_error_vectors[count].size() << std::endl;//THIS IS THE ISSUE. WITH PUSHBACK THE FIRST INDEX IS NOW 0, NOT 1, SO ADJUST YOUR CODE ACCORDINGLY
             
-            /*if(diiscount - 1 > DIIS_num_iters){//trailing cleanup of previous iterates:only keep the needed!
+            if(diiscount - 1 > DIIS_num_iters){//trailing cleanup of previous iterates:only keep the needed!
                 DIIS_energies[diiscount - DIIS_num_iters] = 0.0;
                 DIIS_error_vectors[diiscount - DIIS_num_iters].resize(0);
                 DIIS_vectors[diiscount - DIIS_num_iters].resize(0);
                 DIIS_Tensors[diiscount - DIIS_num_iters].clear();
-            }*/
+            }
 
             //if(diiscount - 1> DIIS_num_iters){//trailing cleanup of previous iterates:only keep the needed!
             //    DIIS_error_vectors[diiscount - 1 - DIIS_num_iters].resize(0);
@@ -1561,7 +1562,7 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
             residualSO.setZero();
             residualSO = SpinOrbitalCCD::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &DIIS_doublesSO, &one_particle_intermediate, two_particle_intermediate);            
             //DIIS_doublesSO.clear();
-            int confused = 1; //0 1 or 2.. or 3 my dude.
+            int confused = 4; //0 1 or 2.. or 3 my dude. or 4 you beaut
             if(confused == 0){
                 doublesSO = SpinOrbitalCCD::update_doubles_so(&doublesSO, &residualSO, &F_SO);
             }
@@ -1584,6 +1585,9 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
                 residualSO = SpinOrbitalCCD::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &doublesSO, &F_SO, two_particle_intermediate);
                 doublesSO = SpinOrbitalCCD::update_doubles_so(&doublesSO, &residualSO, &F_SO);
             }
+            if(confused ==4){
+                doublesSO= SpinOrbitalCCD::stanton_t2_eqn(&two_electron_integrals,&doublesSO,&one_particle_intermediate,&F_SO,two_particle_intermediate);
+            }
         
 
         }         
@@ -1593,9 +1597,14 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
             //std::cout << "F_SO:" << std::endl << F_SO << std::endl;
             //std::cout << "generalized Fock: " << std::endl << one_particle_intermediate <<std::endl;
             TensorRank4 two_particle_intermediate = SpinOrbitalCCD::construct_two_particle_intermediate(doublesSO, two_electron_integrals);
-            residualSO.setZero();
-            residualSO = SpinOrbitalCCD::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &doublesSO, &one_particle_intermediate, two_particle_intermediate);
-            doublesSO = SpinOrbitalCCD::update_doubles_so(&doublesSO, &residualSO, &F_SO);
+            if(stanton_CCD){
+                doublesSO = SpinOrbitalCCD::stanton_t2_eqn(&two_electron_integrals,&doublesSO,&one_particle_intermediate,&F_SO,two_particle_intermediate);
+            }
+            else{
+                residualSO.setZero();
+                residualSO = SpinOrbitalCCD::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &doublesSO, &one_particle_intermediate, two_particle_intermediate);
+                doublesSO = SpinOrbitalCCD::update_doubles_so(&doublesSO, &residualSO, &F_SO);
+            }
         }
         
         //E_ccd = enuc ;
@@ -1609,7 +1618,10 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
         if(!DIIS_time){
             printf("%i        %20.12f          %i\n", count, E_ccd,residcounterSO);
         }
-
+        if (abs(diff_E) < tol_E) {
+            printf("Calculation completed in %i iterations. Final E: %20.12f\n", count, E_ccd);
+            exit(EXIT_SUCCESS);
+        }
         if (count == numMP2steps - 1) {
             std::cout << "Error: Unable to converge doubles in CCD." << std::endl;
             exit(EXIT_FAILURE);
@@ -1635,8 +1647,8 @@ Eigen::MatrixXd SpinOrbitalCCD::construct_one_particle_intermediate(const Eigen:
     Eigen::MatrixXd one_particle_intermediate = Eigen::MatrixXd::Zero(2*nbfs, 2*nbfs);
     for(int a = 2*numocc; a < 2*nbfs; a++){
         for(int b = 2*numocc; b < 2*nbfs; b++){
- //           one_particle_intermediate(a,b) = (1-(a==b))*F_SO(a,b);
-            one_particle_intermediate(a,b) = F_SO(a,b);
+            one_particle_intermediate(a,b) = (1-(a==b))*F_SO(a,b);
+            //one_particle_intermediate(a,b) = F_SO(a,b);
 
             for(int i = 0; i < 2*numocc; i++){
                 for(int j = 0; j < 2*numocc; j++){
@@ -1650,8 +1662,8 @@ Eigen::MatrixXd SpinOrbitalCCD::construct_one_particle_intermediate(const Eigen:
 
     for(int i = 0; i < 2*numocc; i++){
         for(int j = 0; j < 2*numocc; j++){
- //           one_particle_intermediate(i,j) = (1-(i==j))*F_SO(i,j);
-            one_particle_intermediate(i,j) = F_SO(i,j);
+            one_particle_intermediate(i,j) = (1-(i==j))*F_SO(i,j);
+            //one_particle_intermediate(i,j) = F_SO(i,j);
 
 
             for(int k = 0; k < 2*numocc; k++){
@@ -1958,6 +1970,53 @@ TensorRank4 SpinOrbitalCCD::update_doubles_so(TensorRank4 *doubles, const Tensor
         }
     }
     return *doubles;
+}
+
+TensorRank4 SpinOrbitalCCD::stanton_t2_eqn(const TensorRank4 *g, const TensorRank4 *doubles, const Eigen::MatrixXd *F, const Eigen::MatrixXd *f, const TensorRank4 &two_particle_intermediate){
+    //f is the regular fock operator we know and love.
+    //g is the non-antisymmetrized two electron integral tensor
+    //F is what Crawdad calls the one particle intermediate. It's the generalized fock operator
+    //what Crawdad calls the two_particle_intermediate is W. It's the fluctuation operator.
+    TensorRank4 newdoubles(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
+    newdoubles.setZero();
+    for(int i = 0; i < 2*numocc; i++) {
+        for(int j = 0; j < 2*numocc; j++) {
+            for(int a = 0; a < 2*nbfs-2*numocc; a++) {
+                for(int b = 0; b < 2*nbfs-2*numocc; b++) {
+                    newdoubles(i,a,j,b) = (*g)(i,a+2*numocc,j,b+2*numocc) - (*g)(i,b+2*numocc,j,a+2*numocc);//1. ijab (gbar^i,j_a,b)
+                    for(int c = 0; c < 2*nbfs-2*numocc; c++) {
+                        newdoubles(i,a,j,b) += (*doubles)(i,a,j,c) * (*F)(b+2*numocc,c+2*numocc) - (*doubles)(i,b,j,c) * (*F)(a+2*numocc,c+2*numocc);//2. ijabc
+                        
+                        for(int d = 0; d < 2*nbfs-2*numocc; d++) {
+                            newdoubles(i,a,j,b) += 0.5 * (*doubles)(i,c,j,d) * two_particle_intermediate(a+2*numocc,c+2*numocc,b+2*numocc,d+2*numocc);//3. ijabcd
+                        }
+                        for(int k = 0; k < 2*numocc; k++){
+                            newdoubles(i,a,j,b) += (*doubles)(i,a,k,c) * two_particle_intermediate(k,c+2*numocc,b+2*numocc,j) - (*doubles)(i,b,k,c) * two_particle_intermediate(k,c+2*numocc,a+2*numocc,j)
+                                               - (*doubles)(j,a,k,c) * two_particle_intermediate(k,c+2*numocc,b+2*numocc,i) + (*doubles)(j,b,k,c) * two_particle_intermediate(k,c+2*numocc,a+2*numocc,i);//4. ijabck
+                        }
+                    }
+                    for(int k = 0; k < 2*numocc; k++) {
+                        newdoubles(i,a,j,b) += - (*doubles)(i,a,k,b) * (*F)(k,j) + (*doubles)(j,a,k,b) * (*F)(k,i);//5. ijabk
+                        
+                        for(int l = 0; l < 2*numocc; l++){
+                            newdoubles(i,a,j,b) += 0.5 * (*doubles)(k,a,l,b) * two_particle_intermediate(k,i,l,j);//6. ijabkl
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    for(int i = 0; i < 2*numocc; i++) {
+        for(int j = 0; j < 2*numocc; j++) {
+            for(int a = 0; a < 2*nbfs-2*numocc; a++) {
+                for(int b = 0; b < 2*nbfs-2*numocc; b++) {
+                    newdoubles(i,a,j,b) = newdoubles(i,a,j,b)/((*f)(i,i) + (*f)(j,j) - (*f)(a+2*numocc,a+2*numocc) - (*f)(b+2*numocc,b+2*numocc));
+                }
+            }
+        }
+    }
+    return newdoubles;
 }
 
 Eigen::MatrixXd SpinOrbitalCCD::construct_generalized_fock(const TensorRank4 *eriTensorSO, const Eigen::MatrixXd *H_core_SO, const Eigen::MatrixXd *one_particle_density, const TensorRank4 *two_particle_density){

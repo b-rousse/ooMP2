@@ -150,6 +150,8 @@ class SpinOrbitalCCD{
     
     Eigen::MatrixXd rotate_so_sized_matrix(const Eigen::MatrixXd *matrix_to_rotate, const Eigen::MatrixXd *coefficients);
 
+    TensorRank4 stanton_t2_eqn(const TensorRank4 *g, const TensorRank4 *doubles, const Eigen::MatrixXd *F, const Eigen::MatrixXd *f, const TensorRank4 &two_particle_intermediate);
+
     Eigen::MatrixXd construct_generalized_fock(const TensorRank4 *eriTensorSO, const Eigen::MatrixXd *H_core, const Eigen::MatrixXd *one_particle_density, const TensorRank4 *two_particle_density);
 
     Eigen::MatrixXd construct_one_particle_intermediate(const Eigen::MatrixXd &F_SO, const TensorRank4 &doublesSO, const TensorRank4 &two_electron_integrals);
