@@ -1358,7 +1358,7 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
     double E_diff_convergence = 1e-8;
     int numMP2steps = 100;
     int numOOMP2steps = 30;
-    double residconv = 1e-10;
+    double residconv = 1e-12;
 
     Eigen::MatrixXd Coeffs = Eigen::MatrixXd::Zero(2*nbfs,2*nbfs);
     for(int p = 0; p < 2*nbfs; p+=2) {
@@ -1429,10 +1429,11 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
     
     int count =-1;
     bool DIIS_time = false;
-    int DIIS_num_iters = 15;//Scuseria, Lee, Schaefer Chem Phys Lett 1896 recommend 8
+    int DIIS_num_iters = 6;//Scuseria, Lee, Schaefer Chem Phys Lett 1896 recommend 8
     int DIIS_relaxation_stride = 0;//set zero for full DIIS routine. Scuseria, Lee, Schaefer Chem Phys Lett 1896 recommend a stride of 2 or 3.
     int count_since_last_DIIS = DIIS_relaxation_stride;
-    double DIIS_threshhold = 1e-10;
+    double DIIS_storage_threshhold = 1e-5;
+    double DIIS_threshhold = 1e-5;
     bool use_DIIS=true;
 
     std::vector<Eigen::VectorXd> DIIS_vectors;
@@ -1440,36 +1441,37 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
     std::vector<TensorRank4> DIIS_Tensors(0, TensorRank4(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc));
     std::vector<double> DIIS_energies;
     Eigen::MatrixXd DIIS_error_matrix = Eigen::MatrixXd::Zero(DIIS_num_iters+1, DIIS_num_iters+1);
-    
+    int diiscount = -1;
     std::cout << "CCD" << std::endl;
     while(residcounterSO > 0) {
         count++;
         Eigen::VectorXd x;
         residcounterSO = 0;
 
-        if(use_DIIS){
+        if(use_DIIS && fabs(diff_E) < DIIS_storage_threshhold){
+            diiscount++;
             //if(count < DIIS_num_iters){
             //  DIIS_energies[count % DIIS_num_iters] = E_NEO_OOMP2;
             //}
             DIIS_energies.push_back(E_ccd);
             DIIS_vectors.push_back(doublesSO.resizeR4TensortoVector(doublesSO, 2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc));//later on to optimize, just compute as DIIS_Tensor[count].resizeR4TensortoVector(t2_ee_sf, 2*nbfs, 2*nbfs, 2*numocc, 2*numocc) rather than storing;
-            if(count == 0) {DIIS_error_vectors.push_back(Eigen::VectorXd::Zero(1));
+            if(diiscount == 0 && DIIS_storage_threshhold==DIIS_threshhold) {DIIS_error_vectors.push_back(Eigen::VectorXd::Zero(1));
                             //DIIS_error_vectors.push_back(Eigen::VectorXd::Zero(1));
                             }//This is the problematic line at count = DIIS_num_iters.
-            if(count > 0) {DIIS_error_vectors.push_back(DIIS_vectors[count] - DIIS_vectors[count-1]);}//This is the problematic line at count = DIIS_num_iters.
+            else {DIIS_error_vectors.push_back(DIIS_vectors[diiscount] - DIIS_vectors[diiscount-1]);}//This is the problematic line at count = DIIS_num_iters.
             //std::cout << "Size of DIIS_error_vectors at count " << count << " is " << DIIS_error_vectors[count].size() << std::endl;//THIS IS THE ISSUE. WITH PUSHBACK THE FIRST INDEX IS NOW 0, NOT 1, SO ADJUST YOUR CODE ACCORDINGLY
             DIIS_Tensors.push_back(doublesSO);
-            if(count >= DIIS_num_iters){//trailing cleanup of previous iterates:only keep the needed!
-                DIIS_energies[count - DIIS_num_iters] = 0.0;
-                //DIIS_error_vectors[count - DIIS_num_iters].resize(0);
-                DIIS_vectors[count - DIIS_num_iters].resize(0);
-                DIIS_Tensors[count - DIIS_num_iters].clear();
+            if(diiscount >= DIIS_num_iters){//trailing cleanup of previous iterates:only keep the needed!
+                DIIS_energies[diiscount - DIIS_num_iters] = 0.0;
+                //DIIS_error_vectors[diiscount - DIIS_num_iters].resize(0);
+                DIIS_vectors[diiscount - DIIS_num_iters].resize(0);
+                DIIS_Tensors[diiscount - DIIS_num_iters].clear();
             }
 
-            if(count > DIIS_num_iters){//trailing cleanup of previous iterates:only keep the needed!
-                DIIS_error_vectors[count - DIIS_num_iters].resize(0);
+            if(diiscount > DIIS_num_iters){//trailing cleanup of previous iterates:only keep the needed!
+                DIIS_error_vectors[diiscount - DIIS_num_iters].resize(0);
             }
-            if(count > DIIS_num_iters - 1 && fabs(diff_E) < DIIS_threshhold){
+            if(diiscount > DIIS_num_iters && fabs(diff_E) < DIIS_threshhold){
                 DIIS_time = true;
             }
             if(count_since_last_DIIS < DIIS_relaxation_stride){
@@ -1486,9 +1488,9 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
             //std::cout << "DIIS being used " << std::endl;
             for(int i = 0 ; i < DIIS_num_iters; i++){
                 for(int j = 0; j < DIIS_num_iters; j++){
-                    if(i + count - 1 >= DIIS_num_iters && j + count - 1 >= DIIS_num_iters && count > DIIS_num_iters - 1){
+                    if(i + diiscount - 1 >= DIIS_num_iters && j + diiscount - 1 >= DIIS_num_iters && diiscount > DIIS_num_iters - 1){
                         //std::cout << "Size of error vector on count " << count << "at point j = " << j << " :" << std::endl << DIIS_error_vectors[j + count - DIIS_num_iters + 1].size() << std::endl;
-                        DIIS_error_matrix(i,j) = (DIIS_error_vectors[i + count - DIIS_num_iters + 1].transpose() * DIIS_error_vectors[j + count - DIIS_num_iters + 1]);//This bugger was all 0 for i,j < num_iters
+                        DIIS_error_matrix(i,j) = (DIIS_error_vectors[i + diiscount - DIIS_num_iters + 1].transpose() * DIIS_error_vectors[j + diiscount - DIIS_num_iters + 1]);//This bugger was all 0 for i,j < num_iters
                         //std::cout << "error dot product  at count " << count << " is "<< std::endl << (DIIS_error_vectors[i + count - DIIS_num_iters + 1].transpose() * DIIS_error_vectors[j + count - DIIS_num_iters + 1]) << std::endl;//This bugger is all 0 for i,j < num_iters
                         //at i or j =2, DIIS_error_vectors blows up in size. Why? Make sure its indexing correctly above.
                         //std::cout << "Fine after eval on count " << count << " at point (i,j) = " << i << "," << j << std::endl;
@@ -1521,7 +1523,7 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
                     for (auto a = 0; a < 2*nbfs-2*numocc; a++) {
                         for (auto j = 0; j < 2*numocc; j++) {
                             for (auto b = 0; b < 2*nbfs-2*numocc; b++) {
-                                DIIS_doublesSO(i,a,j,b) += x(s) * (DIIS_Tensors[s + count - DIIS_num_iters + 1])(i,a,j,b);
+                                DIIS_doublesSO(i,a,j,b) += x(s) * (DIIS_Tensors[s + diiscount - DIIS_num_iters + 1])(i,a,j,b);
                             }
                         }
                     }
