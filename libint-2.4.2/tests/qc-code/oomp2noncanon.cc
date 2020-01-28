@@ -1356,7 +1356,7 @@ double OOSpinOrbitalMP2::calculate_E_oomp2(const Eigen::MatrixXd *one_particle_d
 SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFCoeffs, const int nbfs, const int numocc, Eigen::VectorXd *Evals, Eigen::MatrixXd *H_core, const Eigen::MatrixXd *S, const double enuc): eriTensor(*eriTensor), SFCoeffs(SFCoeffs), nbfs(nbfs), numocc(numocc), Evals(*Evals), H_core(*H_core), S(*S), enuc(enuc) {
 
     double E_diff_convergence = 1e-8;
-    int numMP2steps = 7;
+    int numMP2steps = 150;
     int numOOMP2steps = 30;
     double residconv = 1e-8;
 
@@ -1400,41 +1400,43 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
     int residcounterSO = 1;
     TensorRank4 residualSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
     residualSO.setZero();
-    //for(int i = 0; i < 2*numocc; i++){
-    //    for(int j = 0; j < 2*numocc; j++){
-    //        for(int a = 0; a < 2*nbfs-2*numocc; a++){
-    //            for(int b = 0; b < 2*nbfs-2*numocc; b++){
-    //                doublesSO(i,a,j,b) = 0.25*(two_electron_integrals(i,a+2*numocc,j,b+2*numocc) - two_electron_integrals(i,b+2*numocc,j,a+2*numocc))/(F_SO(i,i)+F_SO(j,j)-F_SO(a+2*numocc,a+2*numocc)-F_SO(b+2*numocc,b+2*numocc));
-    //            }
-    //        }
-    //    }
-    //}
-    ////residualSO = SpinOrbitalCCD::calculate_residuals_firstguess_so(&residcounterSO, residconv, &two_electron_integrals, &doublesSO, &F_SO);
-    ////doublesSO = SpinOrbitalCCD::update_doubles_so(&doublesSO, &residualSO, &F_SO);
-    //for(int i = 0; i < 2*numocc; i++) {
-    //    for(int j = 0; j < 2*numocc; j++) {
-    //        for(int a = 0; a < 2*nbfs - 2*numocc; a++) {
-    //            for(int b = 0; b < 2*nbfs - 2*numocc; b++) {
-    //                E_ccd_ee += 0.25 * (two_electron_integrals(i,a+2*numocc,j,b+2*numocc) - two_electron_integrals(i,b+2*numocc,j,a+2*numocc)) * doublesSO(i,a,j,b);
-    //            }
-    //        }
-    //    }
-    //}
-    //printf("  E_CCD_ee = %20.12f\n", E_ccd_ee);//END OF STEP 2.
+    for(int i = 0; i < 2*numocc; i++){
+        for(int j = 0; j < 2*numocc; j++){
+            for(int a = 0; a < 2*nbfs-2*numocc; a++){
+                for(int b = 0; b < 2*nbfs-2*numocc; b++){
+                    doublesSO(i,a,j,b) = 0.25*(two_electron_integrals(i,a+2*numocc,j,b+2*numocc) - two_electron_integrals(i,b+2*numocc,j,a+2*numocc))/(F_SO(i,i)+F_SO(j,j)-F_SO(a+2*numocc,a+2*numocc)-F_SO(b+2*numocc,b+2*numocc));
+                }
+            }
+        }
+    }
+    //residualSO = SpinOrbitalCCD::calculate_residuals_firstguess_so(&residcounterSO, residconv, &two_electron_integrals, &doublesSO, &F_SO);
+    //doublesSO = SpinOrbitalCCD::update_doubles_so(&doublesSO, &residualSO, &F_SO);
+    for(int i = 0; i < 2*numocc; i++) {
+        for(int j = 0; j < 2*numocc; j++) {
+            for(int a = 0; a < 2*nbfs - 2*numocc; a++) {
+                for(int b = 0; b < 2*nbfs - 2*numocc; b++) {
+                    E_ccd_ee += 0.25 * (two_electron_integrals(i,a+2*numocc,j,b+2*numocc) - two_electron_integrals(i,b+2*numocc,j,a+2*numocc)) * doublesSO(i,a,j,b);
+                }
+            }
+        }
+    }
+    printf("  E_CCD_ee = %20.12f\n", E_ccd_ee);//END OF STEP 2.
 
     double diff_E = 1.0;
     double tol_E = 1e-8;
     double old_E = 0.0;
     double E_ccd= 0.0;
     
+    int diiscount = -1;
     int count =-1;
+    
     bool DIIS_time = false;
-    int DIIS_num_iters = 5;//Scuseria, Lee, Schaefer Chem Phys Lett 1896 recommend 8
+    int DIIS_num_iters = 10;//Scuseria, Lee, Schaefer Chem Phys Lett 1896 recommend 8
     int effective_DIIS_num_iters = 0;//for count < DIIS_num_iters, we want to use DIIS if energy threshhold is passed. So we need an expanding DIIS infrastructure that caps at DIIS_num_iters
     int DIIS_relaxation_stride = 0;//set zero for full DIIS routine. Scuseria, Lee, Schaefer Chem Phys Lett 1896 recommend a stride of 2 or 3.
     int count_since_last_DIIS = DIIS_relaxation_stride;
-    double DIIS_storage_threshhold = 1e-0;
-    double DIIS_threshhold = 1e-0;
+    double DIIS_storage_threshhold = 1e-4;
+    double DIIS_threshhold = 1e-4;
     bool use_DIIS=true;
 
     std::vector<Eigen::VectorXd> DIIS_vectors;
@@ -1443,7 +1445,6 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
     std::vector<double> DIIS_energies;
     Eigen::MatrixXd DIIS_error_matrix;
     //Eigen::MatrixXd DIIS_error_matrix = Eigen::MatrixXd::Zero(DIIS_num_iters+1, DIIS_num_iters+1);
-    int diiscount = -1;
     std::cout << "CCD" << std::endl;
     while(residcounterSO > 0) {
         count++;
@@ -1458,22 +1459,23 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
             DIIS_energies.push_back(E_ccd);
             DIIS_vectors.push_back(doublesSO.resizeR4TensortoVector(doublesSO, 2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc));//later on to optimize, just compute as DIIS_Tensor[count].resizeR4TensortoVector(t2_ee_sf, 2*nbfs, 2*nbfs, 2*numocc, 2*numocc) rather than storing;
             DIIS_Tensors.push_back(doublesSO);
-            //if(diiscount == 0) {DIIS_error_vectors.push_back(Eigen::VectorXd::Ones(2*numocc*(2*nbfs-2*numocc)* 2*numocc *(2*nbfs-2*numocc)));}
+            if(diiscount == 0) {DIIS_error_vectors.push_back(DIIS_vectors[diiscount]);}//t_0 is already MP2 t2, so I can already use error vector on 0th iteration, as it's t_mp2-t_zeroes.
             //if(diiscount == 0 && DIIS_storage_threshhold==DIIS_threshhold) {DIIS_error_vectors.push_back(Eigen::VectorXd::Ones(2*numocc*(2*nbfs-2*numocc)* 2*numocc *(2*nbfs-2*numocc)));
                             //DIIS_error_vectors.push_back(Eigen::VectorXd::Zero(1));
                             //}//This is the problematic line at count = DIIS_num_iters.
             if(diiscount > 0) {DIIS_error_vectors.push_back(DIIS_vectors[diiscount] - DIIS_vectors[diiscount-1]);}//This is the problematic line at count = DIIS_num_iters.
             //std::cout << "Size of DIIS_error_vectors at count " << count << " is " << DIIS_error_vectors[count].size() << std::endl;//THIS IS THE ISSUE. WITH PUSHBACK THE FIRST INDEX IS NOW 0, NOT 1, SO ADJUST YOUR CODE ACCORDINGLY
-            if(diiscount > DIIS_num_iters){//trailing cleanup of previous iterates:only keep the needed!
+            
+            /*if(diiscount - 1 > DIIS_num_iters){//trailing cleanup of previous iterates:only keep the needed!
                 DIIS_energies[diiscount - DIIS_num_iters] = 0.0;
-                //DIIS_error_vectors[diiscount - DIIS_num_iters].resize(0);
+                DIIS_error_vectors[diiscount - DIIS_num_iters].resize(0);
                 DIIS_vectors[diiscount - DIIS_num_iters].resize(0);
                 DIIS_Tensors[diiscount - DIIS_num_iters].clear();
-            }
+            }*/
 
-            if(diiscount - 1 > DIIS_num_iters){//trailing cleanup of previous iterates:only keep the needed!
-                DIIS_error_vectors[diiscount - 1 - DIIS_num_iters].resize(0);
-            }
+            //if(diiscount - 1> DIIS_num_iters){//trailing cleanup of previous iterates:only keep the needed!
+            //    DIIS_error_vectors[diiscount - 1 - DIIS_num_iters].resize(0);
+            //}
             if(fabs(diff_E) < DIIS_threshhold){
                 DIIS_time = true;
             }
@@ -1498,13 +1500,13 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
             //std::cout << "DIIS being used " << std::endl;
             for(int i = 0 ; i < effective_DIIS_num_iters; i++){
                 for(int j = 0; j < effective_DIIS_num_iters; j++){
-                    if(i + diiscount - 1 >= effective_DIIS_num_iters && j + diiscount - 1 >= effective_DIIS_num_iters && diiscount > effective_DIIS_num_iters - 1){
+                    //if(i + diiscount >= effective_DIIS_num_iters && j + diiscount >= effective_DIIS_num_iters && diiscount > effective_DIIS_num_iters){
                         //std::cout << "Size of error vector on count " << count << "at point j = " << j << " :" << std::endl << DIIS_error_vectors[j + count - DIIS_num_iters + 1].size() << std::endl;
-                        DIIS_error_matrix(i,j) = (DIIS_error_vectors[i + diiscount - effective_DIIS_num_iters].transpose() * DIIS_error_vectors[j + diiscount - effective_DIIS_num_iters]);//This bugger was all 0 for i,j < num_iters
+                        DIIS_error_matrix(i,j) = (DIIS_error_vectors[i + diiscount + 1 - effective_DIIS_num_iters].transpose() * DIIS_error_vectors[j + diiscount + 1 - effective_DIIS_num_iters]);//This bugger was all 0 for i,j < num_iters
                         //std::cout << "error dot product  at count " << count << " is "<< std::endl << (DIIS_error_vectors[i + count - DIIS_num_iters + 1].transpose() * DIIS_error_vectors[j + count - DIIS_num_iters + 1]) << std::endl;//This bugger is all 0 for i,j < num_iters
                         //at i or j =2, DIIS_error_vectors blows up in size. Why? Make sure its indexing correctly above.
                         //std::cout << "Fine after eval on count " << count << " at point (i,j) = " << i << "," << j << std::endl;
-                    }
+                    //}
                     DIIS_error_matrix(effective_DIIS_num_iters,i) = -1.0;
                     DIIS_error_matrix(i,effective_DIIS_num_iters) = -1.0;
                     DIIS_error_matrix(effective_DIIS_num_iters,effective_DIIS_num_iters) = 0.0;
@@ -1533,7 +1535,7 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
                     for (auto a = 0; a < 2*nbfs-2*numocc; a++) {
                         for (auto j = 0; j < 2*numocc; j++) {
                             for (auto b = 0; b < 2*nbfs-2*numocc; b++) {
-                                DIIS_doublesSO(i,a,j,b) += x(s) * (DIIS_Tensors[s + diiscount - effective_DIIS_num_iters + 1])(i,a,j,b);
+                                DIIS_doublesSO(i,a,j,b) += x(s) * (DIIS_Tensors[s + diiscount - effective_DIIS_num_iters +1])(i,a,j,b);
                             }
                         }
                     }
