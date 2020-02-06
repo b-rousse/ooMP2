@@ -1429,11 +1429,11 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
     int DIIS_relaxation_stride = 0;//set zero for full DIIS routine. Scuseria, Lee, Schaefer Chem Phys Lett 1896 recommend a stride of 2 or 3.
     double DIIS_storage_threshhold = 1e-0;
     double DIIS_threshhold = 1e-0;
-    bool unorthodox_error_construction = true;
+    bool unorthodox_error_construction = false;
     bool stanton_CCD = true;
     
     //DON'T NEED TO CHANGE THESE.
-    double diff_E = 0.9;
+    double diff_E = 1.9;
     double old_E = 0.0;
     double E_ccd= 0.0;
     bool unorthodox_dormant = false;
@@ -1448,6 +1448,11 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
     std::vector<double> DIIS_energies;
     Eigen::MatrixXd DIIS_error_matrix;
     bool DIIS_store_switch = false;//to prevent deactivating DIIS if we go back above E threshhold
+
+    if(DIIS_num_iters == 0){
+        std::cout << "ERROR: DIIS_num_iters cannot be zero." << std::endl;
+        exit(EXIT_FAILURE);
+    }
     if(DIIS_storage_threshhold < DIIS_threshhold) {
         std::cout << "ERROR: DIIS_storage_threshhold cannot be smaller than DIIS_threshhold." << std::endl;
         exit(EXIT_FAILURE);
@@ -1456,6 +1461,7 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
     std::cout << "CCD" << std::endl;
     while(abs(diff_E) > tol_E) {//use an or here to allow for residuals or energy
         count++;
+        std::cout << "DIIS num iters and effective num iters:  " << DIIS_num_iters<< "  " << effective_DIIS_num_iters << std::endl;
         residcounterSO = 0;
 
         if(use_DIIS && fabs(diff_E) < DIIS_storage_threshhold){
@@ -1476,7 +1482,7 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
             residualSO = SpinOrbitalCCD::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &doublesSO, &one_particle_intermediate, two_particle_intermediate);
             doublesSO = SpinOrbitalCCD::update_doubles_so(&doublesSO, &residualSO, &F_SO);
         }
-        
+
         if(DIIS_store_switch){
             diiscount++;
             //DIIS_energies.push_back(E_ccd);
@@ -1495,15 +1501,14 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
                 }
                 else{ DIIS_error_vectors[diiscount] = DIIS_vectors[diiscount] - DIIS_error_vectors[diiscount]; }//this looks weird but is er(i)=t(i)-t_interpolated(i-1), where t_interpolated(i-1) is the DIIS interpolated t that immediately led to t(i).
             }
-
             else if (!unorthodox_error_construction) {//regular routine: stored like this all the time. Whereas for Tanner's routine above, it was stored like this for only the beginning before DIIS kicks in.
-                if(count == 0){
+                if(diiscount == 0){
                     DIIS_error_vectors[diiscount] = DIIS_vectors[diiscount] - DIIS_error_vectors[diiscount]; // This is just for the first case, and DIIS_error_vectors' first entry is just the doubles from the previous iteration
                 }
                 else{ DIIS_error_vectors.push_back(DIIS_vectors[diiscount] - DIIS_vectors[diiscount-1]); }
             }
-            
-            if(diiscount - 1> DIIS_num_iters){//trailing cleanup of previous iterates:only keep the needed! diiscount + 1?
+
+            if(diiscount + 1> DIIS_num_iters){//trailing cleanup of previous iterates:only keep the needed! diiscount + 1?
                 DIIS_energies[diiscount - DIIS_num_iters] = 0.0;
                 DIIS_error_vectors[diiscount - DIIS_num_iters].resize(0);
                 DIIS_vectors[diiscount - DIIS_num_iters].resize(0);
@@ -1530,6 +1535,7 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
                 effective_DIIS_num_iters++;
             }
             DIIS_error_matrix = Eigen::MatrixXd::Zero(effective_DIIS_num_iters+1, effective_DIIS_num_iters+1);
+
         }
 
         if(DIIS_time){
@@ -1596,7 +1602,7 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
             TensorRank4 two_particle_intermediate = SpinOrbitalCCD::construct_two_particle_intermediate(DIIS_doublesSO, two_electron_integrals);
                         
             //DIIS_doublesSO.clear();
-            int confused = 4; //0 1 or 2.. or 3 my dude. or 4 you beaut
+            int confused = 5; //0 1 or 2.. or 3 my dude. or 4 you beaut
             if(confused == 0){
                 residualSO.setZero();
                 residualSO = SpinOrbitalCCD::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &DIIS_doublesSO, &one_particle_intermediate, two_particle_intermediate);
@@ -1636,6 +1642,7 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
         //E_ccd = enuc ;
         E_ccd = SpinOrbitalCCD::canonical_E_ee_so(two_electron_integrals, doublesSO);
         diff_E = E_ccd - old_E;
+
         old_E = E_ccd;
         if(DIIS_time){
             double true_E = -0.070162245032;
