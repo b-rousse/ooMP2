@@ -858,7 +858,9 @@ int main(int argc, char *argv[]) {
     // read geometry from a file; by default read from h2o.xyz, else take filename (.xyz) from the command line
     //const auto filename = "qc-code/h2o-crawford.xyz";
     const auto filename = (argc > 1) ? argv[1] : "qc-code/h2o-gaussian.xyz";
-    std::string basis_set = "sto-3g";
+    
+    std::string basis_set = (argc > 2) ? argv[2] : "cc-pVDZ";
+
     //std::string basis_set = "cc-pVDZ";
 
     //const std::string filename;

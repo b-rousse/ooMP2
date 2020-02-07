@@ -185,7 +185,7 @@ class SpinOrbitalCCD{
 
     Eigen::MatrixXd rotate_one_electron_integrals(const Eigen::MatrixXd *rotated_coefficients, const Eigen::MatrixXd *h_core_ao);
 
-    TensorRank4 construct_so_ao_electron_integral_tensor(const TensorRank4 *eriTensor);
+    TensorRank4 construct_so_ao_electron_integral_tensor();
 
     TensorRank4 rotate_two_electron_integrals(const Eigen::MatrixXd *rotated_coefficients, const TensorRank4 *eriTensorSO);
 

@@ -1374,15 +1374,13 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
         }
     }
     
-    TensorRank4 eriTensorSO = SpinOrbitalCCD::construct_so_ao_electron_integral_tensor(eriTensor);//this should be untouched AO tensor.
+    TensorRank4 eriTensorSO = SpinOrbitalCCD::construct_so_ao_electron_integral_tensor();//this should be untouched AO tensor.
 
-    TensorRank4 doublesSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
-    doublesSO.setZero();
+
     Eigen::MatrixXd H_core_SO = SpinOrbitalCCD::fock_build_so(H_core);
     Eigen::MatrixXd one_electron_integrals = SpinOrbitalCCD::rotate_so_sized_matrix(&H_core_SO, &Coeffs);
 
 
-    std::cout << "Iteration         EMP2SO        residcounterSO" << std::endl;
     Eigen::MatrixXd P = Eigen::MatrixXd::Zero(2*nbfs,2*nbfs);//density reconstructed from coefficients: needed to construct fock matrix which is in turn needed for non-canonical MP2
     for(int i = 0; i < 2*nbfs; i++) {//construct P matrix
         for(int j = 0; j < 2*nbfs; j++) {
@@ -1391,15 +1389,19 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
             }
         }
     }
+
     Eigen::MatrixXd F_SO = Eigen::MatrixXd::Zero(2*nbfs,2*nbfs);
     F_SO = SpinOrbitalCCD::fock_build_sf(&P, &Coeffs);
     P.resize(0,0);
+    
     TensorRank4 two_electron_integrals(2*nbfs,2*nbfs,2*nbfs,2*nbfs);
     two_electron_integrals = SpinOrbitalCCD::basic_convert_ERI_tensor_AO_to_soMO(&Coeffs);//Here, how do I reconcile calculating doubles with the oo format of generating tensor?
     double E_ccd_ee=0.0;
     int residcounterSO = 1;
-    TensorRank4 residualSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
-    residualSO.setZero();
+
+
+    TensorRank4 doublesSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
+    doublesSO.setZero();
     for(int i = 0; i < 2*numocc; i++){//first do MP2
         for(int j = 0; j < 2*numocc; j++){
             for(int a = 0; a < 2*nbfs-2*numocc; a++){
@@ -1409,6 +1411,7 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
             }
         }
     }
+    
     //residualSO = SpinOrbitalCCD::calculate_residuals_firstguess_so(&residcounterSO, residconv, &two_electron_integrals, &doublesSO, &F_SO);
     //doublesSO = SpinOrbitalCCD::update_doubles_so(&doublesSO, &residualSO, &F_SO);
     for(int i = 0; i < 2*numocc; i++) {//get MP2 energy, even though it's called E_ccd_ee
@@ -1422,10 +1425,9 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
     }
     printf("  E_MP2_ee = %20.12f\n", E_ccd_ee);//END OF STEP 2.
 
-    
     //TUNABLE DIIS PARAMETERS
-    bool use_DIIS=true;
-    int DIIS_num_iters = 1;//Scuseria, Lee, Schaefer Chem Phys Lett 1896 recommend 8
+    bool use_DIIS=false;
+    int DIIS_num_iters = 4;//Scuseria, Lee, Schaefer Chem Phys Lett 1896 recommend 8
     int DIIS_relaxation_stride = 0;//set zero for full DIIS routine. Scuseria, Lee, Schaefer Chem Phys Lett 1896 recommend a stride of 2 or 3.
     double DIIS_storage_threshhold = 1e-0;
     double DIIS_threshhold = 1e-0;
@@ -1433,7 +1435,7 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
     bool stanton_CCD = true;
     
     //DON'T NEED TO CHANGE THESE.
-    double diff_E = 1.9;
+    double diff_E = 0.9;
     double old_E = 0.0;
     double E_ccd= 0.0;
     bool unorthodox_dormant = false;
@@ -1447,6 +1449,10 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
     std::vector<TensorRank4> DIIS_Tensors(0, TensorRank4(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc));
     std::vector<double> DIIS_energies;
     Eigen::MatrixXd DIIS_error_matrix;
+    TensorRank4 DIIS_doublesSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
+    //if(use_DIIS){
+    //    DIIS_doublesSO.resize
+    //}
     bool DIIS_store_switch = false;//to prevent deactivating DIIS if we go back above E threshhold
 
     if(DIIS_num_iters == 0){
@@ -1458,7 +1464,9 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
         exit(EXIT_FAILURE);
     }
 
-    std::cout << "CCD" << std::endl;
+    std::cout << "CCD: " << std::endl;
+    std::cout << "Iteration         E_CCD        residcounterSO" << std::endl;
+
     while(abs(diff_E) > tol_E) {//use an or here to allow for residuals or energy
         count++;
         std::cout << "DIIS num iters and effective num iters:  " << DIIS_num_iters<< "  " << effective_DIIS_num_iters << std::endl;
@@ -1467,21 +1475,77 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
         if(use_DIIS && fabs(diff_E) < DIIS_storage_threshhold){
             DIIS_store_switch = true;//to prevent deactivating DIIS if we go back above E threshhold
         }
-        
+   
         if(DIIS_store_switch && diiscount == -1) {//store the doubles of the previous round as t_-1, as in er(0) = t_0 - t_-1, and t(0)=t_0. This is useful if DIIS didn't start immediately, but also works if it does as t_-1 will be t_mp2.
             DIIS_error_vectors.push_back(doublesSO.resizeR4TensortoVector(doublesSO, 2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc));
         }
-        
-        Eigen::MatrixXd one_particle_intermediate = SpinOrbitalCCD::construct_one_particle_intermediate(F_SO, doublesSO, two_electron_integrals);
-        TensorRank4 two_particle_intermediate = SpinOrbitalCCD::construct_two_particle_intermediate(doublesSO, two_electron_integrals);
-        if(stanton_CCD){
-            doublesSO = SpinOrbitalCCD::stanton_t2_eqn(&two_electron_integrals,&doublesSO,&one_particle_intermediate,&F_SO,two_particle_intermediate);
+        std::cout << "site 0 length: " << DIIS_vectors.size() << std::endl; 
+
+        //get doublesSO
+        if(DIIS_time){
+            Eigen::MatrixXd one_particle_intermediate = SpinOrbitalCCD::construct_one_particle_intermediate(F_SO, DIIS_doublesSO, two_electron_integrals);
+            TensorRank4 two_particle_intermediate = SpinOrbitalCCD::construct_two_particle_intermediate(DIIS_doublesSO, two_electron_integrals);
+
+            //DIIS_doublesSO.clear();
+            int confused = 4; //0 1 or 2.. or 3 my dude. or 4 you beaut
+            if(confused == 0){
+                TensorRank4 residualSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
+                residualSO.setZero();
+                residualSO = SpinOrbitalCCD::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &DIIS_doublesSO, &one_particle_intermediate, two_particle_intermediate);
+                doublesSO = SpinOrbitalCCD::update_doubles_so(&doublesSO, &residualSO, &F_SO);
+            }
+            if(confused == 1){
+                TensorRank4 residualSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
+                residualSO.setZero();
+                residualSO = SpinOrbitalCCD::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &DIIS_doublesSO, &one_particle_intermediate, two_particle_intermediate);
+                doublesSO = SpinOrbitalCCD::update_doubles_so(&DIIS_doublesSO, &residualSO, &F_SO);
+            }
+            if(confused == 2){
+                TensorRank4 residualSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
+                residualSO.setZero();
+                residualSO = SpinOrbitalCCD::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &DIIS_doublesSO, &one_particle_intermediate, two_particle_intermediate);
+                doublesSO = SpinOrbitalCCD::update_doubles_so(&DIIS_doublesSO, &residualSO, &F_SO);
+                one_particle_intermediate = SpinOrbitalCCD::construct_one_particle_intermediate(F_SO, doublesSO, two_electron_integrals);
+                two_particle_intermediate = SpinOrbitalCCD::construct_two_particle_intermediate(doublesSO, two_electron_integrals);
+                residualSO.setZero();
+                residualSO = SpinOrbitalCCD::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &doublesSO, &F_SO, two_particle_intermediate);
+                doublesSO = SpinOrbitalCCD::update_doubles_so(&doublesSO, &residualSO, &F_SO);
+            }
+            if(confused == 3){
+                TensorRank4 residualSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
+                residualSO.setZero();
+                residualSO = SpinOrbitalCCD::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &DIIS_doublesSO, &one_particle_intermediate, two_particle_intermediate);
+                doublesSO = SpinOrbitalCCD::update_doubles_so(&doublesSO, &residualSO, &F_SO);
+                one_particle_intermediate = SpinOrbitalCCD::construct_one_particle_intermediate(F_SO, doublesSO, two_electron_integrals);
+                two_particle_intermediate = SpinOrbitalCCD::construct_two_particle_intermediate(doublesSO, two_electron_integrals);
+                residualSO.setZero();
+                residualSO = SpinOrbitalCCD::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &doublesSO, &F_SO, two_particle_intermediate);
+                doublesSO = SpinOrbitalCCD::update_doubles_so(&doublesSO, &residualSO, &F_SO);
+            }
+            if(confused == 4){
+                doublesSO = SpinOrbitalCCD::stanton_t2_eqn(&two_electron_integrals,&DIIS_doublesSO,&one_particle_intermediate,&F_SO,two_particle_intermediate);
+            }
+            //if(unorthodox_error_construction){
+            //    //if(DIIS_store_switch && diiscount == 0) {
+            //    //    DIIS_vectors.push_back()
+            //    //}
+            //    DIIS_error_vectors.push_back(DIIS_doublesSO.resizeR4TensortoVector(DIIS_doublesSO,2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc));
+            //}
         }
-        else{
-            residualSO.setZero();
-            residualSO = SpinOrbitalCCD::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &doublesSO, &one_particle_intermediate, two_particle_intermediate);
-            doublesSO = SpinOrbitalCCD::update_doubles_so(&doublesSO, &residualSO, &F_SO);
+        else {
+            Eigen::MatrixXd one_particle_intermediate = SpinOrbitalCCD::construct_one_particle_intermediate(F_SO, doublesSO, two_electron_integrals);
+            TensorRank4 two_particle_intermediate = SpinOrbitalCCD::construct_two_particle_intermediate(doublesSO, two_electron_integrals);
+            if(stanton_CCD){
+                doublesSO = SpinOrbitalCCD::stanton_t2_eqn(&two_electron_integrals,&doublesSO,&one_particle_intermediate,&F_SO,two_particle_intermediate);
+            }
+            else{
+                TensorRank4 residualSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
+                residualSO.setZero();
+                residualSO = SpinOrbitalCCD::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &doublesSO, &one_particle_intermediate, two_particle_intermediate);
+                doublesSO = SpinOrbitalCCD::update_doubles_so(&doublesSO, &residualSO, &F_SO);
+            }
         }
+        //end get doublesSO
 
         if(DIIS_store_switch){
             diiscount++;
@@ -1565,16 +1629,14 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
             }
             Desiredvec(effective_DIIS_num_iters) = -1.0;
             //std::cout << Desiredvec << std::endl << std::endl;
-            std::cout << "error matrix at count " << count << " is "<< std::endl << DIIS_error_matrix << std::endl;
+            //std::cout << "error matrix at count " << count << " is "<< std::endl << DIIS_error_matrix << std::endl;
             //Eigen::VectorXd x = DIIS_error_matrix.colPivHouseholderQr().solve(Desiredvec);
             Eigen::VectorXd x = DIIS_error_matrix.fullPivHouseholderQr().solve(Desiredvec);
             //std::cout << "Fine on count " << count << " at point 1" << std::endl;
-            std::cout << "weighting at count " << count << " is " <<std::endl << x << std::endl;
+            //std::cout << "weighting at count " << count << " is " <<std::endl << x << std::endl;
             //std::cout << "sum of weighting at count " << count << " is " <<std::endl << x.sum() - x(DIIS_num_iters) << std::endl;
 
-
-
-            TensorRank4 DIIS_doublesSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
+            //TensorRank4 DIIS_doublesSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
             DIIS_doublesSO.setZero();
             for (int s = 0; s < effective_DIIS_num_iters; s++ ) {
                 for (auto i = 0; i < 2*numocc; i++) {
@@ -1598,44 +1660,7 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
                 DIIS_error_vectors.push_back(DIIS_doublesSO.resizeR4TensortoVector(DIIS_doublesSO,2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc));
             }
             //std::cout << "Fine on count " << count << " at point 2" << std::endl;
-            Eigen::MatrixXd one_particle_intermediate = SpinOrbitalCCD::construct_one_particle_intermediate(F_SO, DIIS_doublesSO, two_electron_integrals);
-            TensorRank4 two_particle_intermediate = SpinOrbitalCCD::construct_two_particle_intermediate(DIIS_doublesSO, two_electron_integrals);
-                        
-            //DIIS_doublesSO.clear();
-            int confused = 5; //0 1 or 2.. or 3 my dude. or 4 you beaut
-            if(confused == 0){
-                residualSO.setZero();
-                residualSO = SpinOrbitalCCD::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &DIIS_doublesSO, &one_particle_intermediate, two_particle_intermediate);
-                doublesSO = SpinOrbitalCCD::update_doubles_so(&doublesSO, &residualSO, &F_SO);
-            }
-            if(confused == 1){
-                residualSO.setZero();
-                residualSO = SpinOrbitalCCD::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &DIIS_doublesSO, &one_particle_intermediate, two_particle_intermediate);
-                doublesSO = SpinOrbitalCCD::update_doubles_so(&DIIS_doublesSO, &residualSO, &F_SO);
-            }
-            if(confused == 2){
-                residualSO.setZero();
-                residualSO = SpinOrbitalCCD::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &DIIS_doublesSO, &one_particle_intermediate, two_particle_intermediate);
-                doublesSO = SpinOrbitalCCD::update_doubles_so(&DIIS_doublesSO, &residualSO, &F_SO);
-                one_particle_intermediate = SpinOrbitalCCD::construct_one_particle_intermediate(F_SO, doublesSO, two_electron_integrals);
-                two_particle_intermediate = SpinOrbitalCCD::construct_two_particle_intermediate(doublesSO, two_electron_integrals);
-                residualSO.setZero();
-                residualSO = SpinOrbitalCCD::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &doublesSO, &F_SO, two_particle_intermediate);
-                doublesSO = SpinOrbitalCCD::update_doubles_so(&doublesSO, &residualSO, &F_SO);
-            }
-            if(confused == 3){
-                residualSO.setZero();
-                residualSO = SpinOrbitalCCD::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &DIIS_doublesSO, &one_particle_intermediate, two_particle_intermediate);
-                doublesSO = SpinOrbitalCCD::update_doubles_so(&doublesSO, &residualSO, &F_SO);
-                one_particle_intermediate = SpinOrbitalCCD::construct_one_particle_intermediate(F_SO, doublesSO, two_electron_integrals);
-                two_particle_intermediate = SpinOrbitalCCD::construct_two_particle_intermediate(doublesSO, two_electron_integrals);
-                residualSO.setZero();
-                residualSO = SpinOrbitalCCD::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &doublesSO, &F_SO, two_particle_intermediate);
-                doublesSO = SpinOrbitalCCD::update_doubles_so(&doublesSO, &residualSO, &F_SO);
-            }
-            if(confused == 4){
-                doublesSO = SpinOrbitalCCD::stanton_t2_eqn(&two_electron_integrals,&DIIS_doublesSO,&one_particle_intermediate,&F_SO,two_particle_intermediate);
-            }
+
 
         }         
 
@@ -1645,14 +1670,19 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
 
         old_E = E_ccd;
         if(DIIS_time){
-            double true_E = -0.070162245032;
+            double true_E = 0.0;
+            if (nbfs == 7) {true_E= -0.070162245032;}
+            else {true_E = old_E;}
             printf("%i        %20.12f          %i        DIIS     distance from target:   %1.1e\n", count, E_ccd,residcounterSO, true_E - E_ccd);
         }
         if(!DIIS_time){
             printf("%i        %20.12f          %i\n", count, E_ccd,residcounterSO);
         }
         if (abs(diff_E) < tol_E) {
-            double true_E = -0.070162245032;
+            double true_E = 0.0;
+            if (nbfs == 7) {true_E= -0.070162245032;}
+            else {true_E = old_E;}
+
             printf("Calculation completed in %i iterations. Final E: %20.12f. Target E: %20.12f. Difference in E: %1.1e\n", count, E_ccd, true_E, true_E - E_ccd);
             exit(EXIT_SUCCESS);
         }
@@ -2201,7 +2231,7 @@ Eigen::MatrixXd SpinOrbitalCCD::rotate_one_electron_integrals(const Eigen::Matri
     //will i need to change T and/or V? I'm not sure I do... I think I just take my AO built H (H_core + eri) (H_core = T+V)
 }
 
-TensorRank4 SpinOrbitalCCD::construct_so_ao_electron_integral_tensor(const TensorRank4 *eriTensor){
+TensorRank4 SpinOrbitalCCD::construct_so_ao_electron_integral_tensor(){
     TensorRank4 eriTensorSObasis(2*nbfs, 2*nbfs, 2*nbfs, 2*nbfs);
     //eriTensorSO.setZero(); // Use this later to not have to populate with zeros in the loops below.
 
@@ -2209,20 +2239,10 @@ TensorRank4 SpinOrbitalCCD::construct_so_ao_electron_integral_tensor(const Tenso
         for(int q = 0; q < 2*nbfs; q+=2) {
             for(int r = 0; r < 2*nbfs; r+=2) {
                 for(int s = 0; s < 2*nbfs; s+=2) {
-                    for(int i = 0; i < nbfs; i++) {
-                        for(int j = 0; j < nbfs; j++) {
-                            for(int k = 0; k < nbfs; k++) {
-                                for(int l = 0; l < nbfs; l++) {
-                                    if(p/2==i && q/2==j && r/2==k && s/2 ==l) {
-                                        eriTensorSObasis(p,q,r,s) = (*eriTensor)(i,j,k,l);
-                                        eriTensorSObasis(p+1,q+1,r,s) = (*eriTensor)(i,j,k,l);
-                                        eriTensorSObasis(p,q,r+1,s+1) = (*eriTensor)(i,j,k,l);
-                                        eriTensorSObasis(p+1,q+1,r+1,s+1) = (*eriTensor)(i,j,k,l);
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    eriTensorSObasis(p,q,r,s) = (eriTensor)(p/2,q/2,r/2,s/2);
+                    eriTensorSObasis(p+1,q+1,r,s) = (eriTensor)(p/2,q/2,r/2,s/2);
+                    eriTensorSObasis(p,q,r+1,s+1) = (eriTensor)(p/2,q/2,r/2,s/2);
+                    eriTensorSObasis(p+1,q+1,r+1,s+1) = (eriTensor)(p/2,q/2,r/2,s/2);
                 }
             }
         }
