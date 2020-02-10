@@ -859,7 +859,7 @@ int main(int argc, char *argv[]) {
     //const auto filename = "qc-code/h2o-crawford.xyz";
     const auto filename = (argc > 1) ? argv[1] : "qc-code/h2o-gaussian.xyz";
     
-    std::string basis_set = (argc > 2) ? argv[2] : "cc-pVDZ";
+    std::string basis_set = (argc > 2) ? argv[2] : "sto-3g";
 
     //std::string basis_set = "cc-pVDZ";
 
