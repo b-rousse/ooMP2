@@ -1418,8 +1418,8 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
     printf("  E_MP2_ee = %20.12f\n", E_ccd_ee);//END OF STEP 2.
 
     //TUNABLE DIIS PARAMETERS
-    bool stanton_CCD = true;
-    bool use_DIIS=true;
+    bool stanton_CCD = false;
+    bool use_DIIS=false;
     int DIIS_max_num_iters = 6;//Scuseria, Lee, Schaefer Chem Phys Lett 1896 recommend 8
     int DIIS_relaxation_stride = 0;//set zero for full DIIS routine. Scuseria, Lee, Schaefer Chem Phys Lett 1896 recommend a stride of 2 or 3.
     double DIIS_storage_threshhold = 1e-0;
