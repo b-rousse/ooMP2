@@ -1418,6 +1418,7 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
     printf("  E_MP2_ee = %20.12f\n", E_ccd_ee);//END OF STEP 2.
 
     //TUNABLE DIIS PARAMETERS
+    bool stanton_CCD = false;
     bool use_DIIS=true;
     int DIIS_max_num_iters = 6;//Scuseria, Lee, Schaefer Chem Phys Lett 1896 recommend 8
     int DIIS_relaxation_stride = 0;//set zero for full DIIS routine. Scuseria, Lee, Schaefer Chem Phys Lett 1896 recommend a stride of 2 or 3.
@@ -1425,7 +1426,6 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
     double DIIS_threshhold = 1e-4;
     bool unorthodox_error_construction = false;
     bool earlybird = true;
-    bool stanton_CCD = true;
     bool ccpvdz = false;
     if(nbfs > 20) {ccpvdz = true;}
     
@@ -1456,7 +1456,7 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
         exit(EXIT_FAILURE);
     }
     
-    if(earlybird) {
+    if(earlybird && stanton_CCD) {
         Eigen::MatrixXd one_particle_intermediate = SpinOrbitalCCD::construct_one_particle_intermediate(F_SO, doublesSO, two_electron_integrals);
         TensorRank4 two_particle_intermediate = SpinOrbitalCCD::construct_two_particle_intermediate(doublesSO, two_electron_integrals);
         doublesSO = SpinOrbitalCCD::stanton_t2_eqn(&two_electron_integrals,&doublesSO,&one_particle_intermediate,&F_SO,two_particle_intermediate);
@@ -1483,44 +1483,15 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
             Eigen::MatrixXd one_particle_intermediate = SpinOrbitalCCD::construct_one_particle_intermediate(F_SO, DIIS_doublesSO, two_electron_integrals);
             TensorRank4 two_particle_intermediate = SpinOrbitalCCD::construct_two_particle_intermediate(DIIS_doublesSO, two_electron_integrals);
 
-            //DIIS_doublesSO.clear();
-            int confused = 4; //0 1 or 2.. or 3 my dude. or 4 you beaut
-            if(confused == 0){
-                TensorRank4 residualSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
-                residualSO.setZero();
-                residualSO = SpinOrbitalCCD::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &DIIS_doublesSO, &one_particle_intermediate, two_particle_intermediate);
-                doublesSO = SpinOrbitalCCD::update_doubles_so(&doublesSO, &residualSO, &F_SO);
-            }
-            if(confused == 1){
-                TensorRank4 residualSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
-                residualSO.setZero();
-                residualSO = SpinOrbitalCCD::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &DIIS_doublesSO, &one_particle_intermediate, two_particle_intermediate);
-                doublesSO = SpinOrbitalCCD::update_doubles_so(&DIIS_doublesSO, &residualSO, &F_SO);
-            }
-            if(confused == 2){
-                TensorRank4 residualSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
-                residualSO.setZero();
-                residualSO = SpinOrbitalCCD::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &DIIS_doublesSO, &one_particle_intermediate, two_particle_intermediate);
-                doublesSO = SpinOrbitalCCD::update_doubles_so(&DIIS_doublesSO, &residualSO, &F_SO);
-                one_particle_intermediate = SpinOrbitalCCD::construct_one_particle_intermediate(F_SO, doublesSO, two_electron_integrals);
-                two_particle_intermediate = SpinOrbitalCCD::construct_two_particle_intermediate(doublesSO, two_electron_integrals);
-                residualSO.setZero();
-                residualSO = SpinOrbitalCCD::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &doublesSO, &F_SO, two_particle_intermediate);
-                doublesSO = SpinOrbitalCCD::update_doubles_so(&doublesSO, &residualSO, &F_SO);
-            }
-            if(confused == 3){
-                TensorRank4 residualSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
-                residualSO.setZero();
-                residualSO = SpinOrbitalCCD::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &DIIS_doublesSO, &one_particle_intermediate, two_particle_intermediate);
-                doublesSO = SpinOrbitalCCD::update_doubles_so(&doublesSO, &residualSO, &F_SO);
-                one_particle_intermediate = SpinOrbitalCCD::construct_one_particle_intermediate(F_SO, doublesSO, two_electron_integrals);
-                two_particle_intermediate = SpinOrbitalCCD::construct_two_particle_intermediate(doublesSO, two_electron_integrals);
-                residualSO.setZero();
-                residualSO = SpinOrbitalCCD::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &doublesSO, &F_SO, two_particle_intermediate);
-                doublesSO = SpinOrbitalCCD::update_doubles_so(&doublesSO, &residualSO, &F_SO);
-            }
-            if(confused == 4){
+            //DIIS_doublesSO.clear();            
+            if(stanton_CCD){
                 doublesSO = SpinOrbitalCCD::stanton_t2_eqn(&two_electron_integrals,&DIIS_doublesSO,&one_particle_intermediate,&F_SO,two_particle_intermediate);
+            }
+            else{
+                TensorRank4 residualSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
+                residualSO.setZero();
+                residualSO = SpinOrbitalCCD::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &DIIS_doublesSO, &one_particle_intermediate, two_particle_intermediate);
+                doublesSO = SpinOrbitalCCD::update_doubles_so(&doublesSO, &residualSO, &F_SO);//I think this should be DIIS_doublesSO.
             }
             //if(unorthodox_error_construction){
             //    DIIS_error_vectors.push_back(DIIS_doublesSO.resizeR4TensortoVector(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc));
@@ -1579,18 +1550,12 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
             DIIS_energies.push_back(E_ccd);
             DIIS_Tensors.push_back(doublesSO);
 
-            if (DIIS_time && unorthodox_error_construction) {//for Tanner's routine after DIIS has been triggered.
+            if (DIIS_time) {//for Tanner's routine after DIIS has been triggered.
                 if(diiscount == 0) {
                     DIIS_error_vectors[diiscount] = DIIS_Tensors[diiscount].resizeR4TensortoVector(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc) - DIIS_error_vectors[diiscount];
                 }
                 else { DIIS_error_vectors[diiscount] = DIIS_Tensors[diiscount].resizeR4TensortoVector(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc) - DIIS_error_vectors[diiscount]; }//this looks weird but is er(i)=t(i)-t_interpolated(i-1), where t_interpolated(i-1) is the DIIS interpolated t that immediately led to t(i).
             } 
-            else {//regular routine: stored like this all the time. Also used for Tanner's routine above pre-DIIS activation.
-                if(diiscount == 0){//this case covers both if we start DIIS storage immediately(count=0 in which case it's t_0-t_mp2) or at some later point (count=n in which case it's t_n-t_n-1)
-                    DIIS_error_vectors[diiscount] = DIIS_Tensors[diiscount].resizeR4TensortoVector(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc) - DIIS_error_vectors[diiscount]; // This is just for the first case, and DIIS_error_vectors' first entry is just the doubles from the previous iteration
-                }
-                else{ DIIS_error_vectors.push_back(DIIS_Tensors[diiscount].resizeR4TensortoVector(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc) - DIIS_Tensors[diiscount-1].resizeR4TensortoVector(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc)); }
-            }
 
             if(diiscount + 1> DIIS_max_num_iters){//trailing cleanup of previous iterates:only keep the needed! diiscount + 1?
                 DIIS_energies[diiscount - DIIS_max_num_iters] = 0.0;
@@ -1605,10 +1570,8 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
             if(count_since_last_DIIS < DIIS_relaxation_stride){
                 DIIS_time = false;
                 count_since_last_DIIS++;
-                if(unorthodox_error_construction){ 
-                    unorthodox_dormant = true;//the relaxation scheme means we can't continuously store Tanner-form error tensor, so if it's in a relaxation phase, I need to switch back to conventional error tensor construction
-                    unorthodox_error_construction = false;
-                }
+                unorthodox_dormant = true;//the relaxation scheme means we can't continuously store Tanner-form error tensor, so if it's in a relaxation phase, I need to switch back to conventional error tensor construction
+                unorthodox_error_construction = false;
             }
 
             if(diiscount >= DIIS_max_num_iters){
@@ -1622,6 +1585,7 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
 
         if(DIIS_time){
             count_since_last_DIIS = 0;
+            std::cout << "length of tensors (errors) vector : " << DIIS_Tensors.size() << " (" << DIIS_error_vectors.size() << ")" <<std::endl;
             if(unorthodox_dormant) {unorthodox_error_construction = true; unorthodox_dormant = false;}// and thus completes the cycle (reactivate cool error tensor construction as I can use it again)
             for(int i = 0 ; i < effective_DIIS_num_iters; i++){
                 for(int j = 0; j < effective_DIIS_num_iters; j++){
@@ -1654,22 +1618,14 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
                     for (auto a = 0; a < 2*nbfs-2*numocc; a++) {
                         for (auto j = 0; j < 2*numocc; j++) {
                             for (auto b = 0; b < 2*nbfs-2*numocc; b++) {
-                                //DIIS_doublesSO(i,a,j,b) += x(effective_DIIS_num_iters - s - 1) * (DIIS_Tensors[s + diiscount - effective_DIIS_num_iters +1])(i,a,j,b);
                                 DIIS_doublesSO(i,a,j,b) += x(s) * (DIIS_Tensors[s + diiscount - effective_DIIS_num_iters + 1])(i,a,j,b);
                             }
                         }
                     }
                 }
             }
-            //if(DIIS_store_switch && diiscount == 0) {DIIS_vectors.push_back()
 
-
-            if(unorthodox_error_construction){
-                //if(DIIS_store_switch && diiscount == 0) {
-                //    DIIS_vectors.push_back()
-                //}
-                DIIS_error_vectors.push_back(DIIS_doublesSO.resizeR4TensortoVector(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc));
-            }
+            DIIS_error_vectors.push_back(DIIS_doublesSO.resizeR4TensortoVector(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc));
 
         }         
     }
