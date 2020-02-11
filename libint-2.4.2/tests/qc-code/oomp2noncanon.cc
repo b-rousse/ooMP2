@@ -1425,7 +1425,7 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
     double DIIS_storage_threshhold = 1e-0;
     double DIIS_threshhold = 1e-4;
     bool unorthodox_error_construction = true;
-    bool earlybird = true;
+    bool earlybird = false;
     bool ccpvdz = false;
     if(nbfs > 20) {ccpvdz = true;}
     
@@ -1446,27 +1446,29 @@ SpinOrbitalCCD::SpinOrbitalCCD(const TensorRank4 *eriTensor, Eigen::MatrixXd SFC
     TensorRank4 DIIS_doublesSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
     bool DIIS_store_switch = false;//to prevent deactivating DIIS if we go back above E threshhold
 
-
     if(DIIS_max_num_iters == 0){
         std::cout << "ERROR: DIIS_max_num_iters cannot be zero." << std::endl;
         exit(EXIT_FAILURE);
+    }
+    else if (DIIS_max_num_iters == 0) {
+        std::cout << "WARNING: You have selected only one tensor to be used in DIIS, equivalent to not using DIIS. Increase DIIS_num_iters for speedup." << std::endl;
     }
     if(DIIS_storage_threshhold < DIIS_threshhold) {
         std::cout << "ERROR: DIIS_storage_threshhold cannot be smaller than DIIS_threshhold." << std::endl;
         exit(EXIT_FAILURE);
     }
     
+    std::cout << "CCD: " << std::endl;
+    std::cout << "Iteration         E_CCD        residcounterSO" << std::endl;
+
     if(earlybird && stanton_CCD) {
         Eigen::MatrixXd one_particle_intermediate = SpinOrbitalCCD::construct_one_particle_intermediate(F_SO, doublesSO, two_electron_integrals, stanton_CCD);
         TensorRank4 two_particle_intermediate = SpinOrbitalCCD::construct_two_particle_intermediate(doublesSO, two_electron_integrals);
         doublesSO = SpinOrbitalCCD::stanton_t2_eqn(&two_electron_integrals,&doublesSO,&one_particle_intermediate,&F_SO,two_particle_intermediate);
     }
 
-
-    std::cout << "CCD: " << std::endl;
-    std::cout << "Iteration         E_CCD        residcounterSO" << std::endl;
     //std::cout << "numocc, nbfs: " << numocc << ", " << nbfs << std::endl;
-    while(abs(diff_E) > tol_E) {//use an or here to allow for residuals or energy?
+    while(abs(diff_E) > tol_E || residcounterSO > 0) {//Stanton CCD only needs to pass energy test, while residuals will have to pass both energy and residcount.
         count++;
         residcounterSO = 0;
 
