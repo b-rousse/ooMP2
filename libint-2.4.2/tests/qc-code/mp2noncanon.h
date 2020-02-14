@@ -146,6 +146,8 @@ class SpinOrbitalCCD{
 
     SpinOrbitalCCD(const TensorRank4 *eriTensor, const Eigen::MatrixXd SFCoeffs, const int nbfs, const int numocc, Eigen::VectorXd *Evals, Eigen::MatrixXd *H_core, const Eigen::MatrixXd *S, const double enuc);
 
+    double compute_condition_number(const int dim1, const Eigen::MatrixXd &A);
+
     double canonical_E_ee_so(const TensorRank4 &two_electron_integrals, const TensorRank4 &doublesSO);
     
     Eigen::MatrixXd rotate_so_sized_matrix(const Eigen::MatrixXd *matrix_to_rotate, const Eigen::MatrixXd *coefficients);
