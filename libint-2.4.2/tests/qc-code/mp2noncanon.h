@@ -90,25 +90,23 @@ class OOSpinOrbitalMP2{
 
     OOSpinOrbitalMP2(const TensorRank4 *eriTensor, const Eigen::MatrixXd SFCoeffs, const int nbfs, const int numocc, Eigen::VectorXd *Evals, Eigen::MatrixXd *H_core, const Eigen::MatrixXd *S, const double enuc);
 
+    double compute_condition_number(const int dim1, const Eigen::MatrixXd &A);
+
     Eigen::MatrixXd rotate_so_sized_matrix(const Eigen::MatrixXd *matrix_to_rotate, const Eigen::MatrixXd *coefficients);
 
     Eigen::MatrixXd construct_generalized_fock(const TensorRank4 *eriTensorSO, const Eigen::MatrixXd *H_core, const Eigen::MatrixXd *one_particle_density, const TensorRank4 *two_particle_density);
 
-    Eigen::MatrixXd fock_spinfreebuildforMP2(const Eigen::MatrixXd *P, const Eigen::MatrixXd *Coeffs);
+    Eigen::MatrixXd fock_build_sf(const Eigen::MatrixXd *P, const Eigen::MatrixXd *Coeffs);
     
-    Eigen::MatrixXd fock_spinorbitalbuildforMP2(const Eigen::MatrixXd *F_mo);
+    Eigen::MatrixXd fock_build_so(const Eigen::MatrixXd *F_mo);
 
-    TensorRank4 Basic_convert_ERI_Tensor_AOtospinorbitalMO(const Eigen::MatrixXd *Coeffs);
+    TensorRank4 basic_convert_ERI_tensor_AO_to_soMO(const Eigen::MatrixXd *Coeffs);
 
-    TensorRank4 Basic_convert_ERI_Tensor_SpinfreeMOtoSpinorbitalMO(const TensorRank4 *MP2Tensor);
+    TensorRank4 basic_convert_ERI_tensor_sfMO_to_soMO(const TensorRank4 *MP2Tensor);
 
-    double Canonical_EMP2_Spinorbital(const TensorRank4 *MP2Tensor, const Eigen::MatrixXd *CanFock);
+    TensorRank4 calculate_residuals_so(int *residcounter, const double residconv, const TensorRank4 *two_electron_integral, const TensorRank4 *doubles, const Eigen::MatrixXd *F);
 
-    double Spinorbital_EMP2(const TensorRank4 *MP2Tensor, const TensorRank4 *doubles, const Eigen::MatrixXd *one_electron_integrals, const Eigen::MatrixXd *one_particle_density);
-
-    TensorRank4 Calculate_MP2_residualsspinorbital(int *residcounter, const double residconv, const TensorRank4 *MP2Tensor, const TensorRank4 *doubles, const Eigen::MatrixXd *F);
-
-    TensorRank4 Update_MP2_doublesspinorbital(TensorRank4 *doubles, const TensorRank4 *residual, const Eigen::MatrixXd *F);
+    TensorRank4 update_doubles_so(TensorRank4 *doubles, const TensorRank4 *residual, const Eigen::MatrixXd *F);
 
     Eigen::MatrixXd build_one_particle_density_hf();
 
@@ -125,7 +123,7 @@ class OOSpinOrbitalMP2{
 
     Eigen::MatrixXd rotate_one_electron_integrals(const Eigen::MatrixXd *rotated_coefficients, const Eigen::MatrixXd *h_core_ao);
 
-    TensorRank4 construct_spinorbital_ao_electron_integral_tensor(const TensorRank4 *eriTensor);
+    TensorRank4 construct_so_ao_electron_integral_tensor();
 
     TensorRank4 rotate_two_electron_integrals(const Eigen::MatrixXd *rotated_coefficients, const TensorRank4 *eriTensorSO);
 
