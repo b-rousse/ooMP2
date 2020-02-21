@@ -542,36 +542,15 @@ TensorRank4 SpinOrbitalMP2::Basic_convert_ERI_Tensor_AOtospinfreeMO() {
 
 TensorRank4 SpinOrbitalMP2::Basic_convert_ERI_Tensor_SpinfreeMOtoSpinorbitalMO(const TensorRank4 *MP2Tensor) {//I could speed this up by setting to 0 rather than populating with 0.0
     TensorRank4 MP2TensorSO(2*nbfs, 2*nbfs, 2*nbfs, 2*nbfs);
+    MP2TensorSO.setZero();
     for(int p = 0; p < 2*nbfs; p+=2) {
         for(int q = 0; q < 2*nbfs; q+=2) {
             for(int r = 0; r < 2*nbfs; r+=2) {
                 for(int s = 0; s < 2*nbfs; s+=2) {
-                    for(int i = 0; i < nbfs; i++) {
-                        for(int j = 0; j < nbfs; j++) {
-                            for(int k = 0; k < nbfs; k++) {
-                                for(int l = 0; l < nbfs; l++) {
-                                    if(p/2==i && q/2==j && r/2==k && s/2 ==l) {
-                                        MP2TensorSO(p,q,r,s) = (*MP2Tensor)(i,j,k,l);
-                                        MP2TensorSO(p+1,q,r,s) = 0.0;
-                                        MP2TensorSO(p,q+1,r,s) = 0.0;
-                                        MP2TensorSO(p,q,r+1,s) = 0.0;
-                                        MP2TensorSO(p,q,r,s+1) = 0.0;
-                                        MP2TensorSO(p+1,q+1,r,s) = (*MP2Tensor)(i,j,k,l);
-                                        MP2TensorSO(p+1,q,r+1,s) = 0.0;
-                                        MP2TensorSO(p+1,q,r,s+1) = 0.0;
-                                        MP2TensorSO(p,q+1,r+1,s) = 0.0;
-                                        MP2TensorSO(p,q+1,r,s+1) = 0.0;
-                                        MP2TensorSO(p,q,r+1,s+1) = (*MP2Tensor)(i,j,k,l);
-                                        MP2TensorSO(p+1,q+1,r+1,s) = 0.0;                    
-                                        MP2TensorSO(p+1,q+1,r,s+1) = 0.0;
-                                        MP2TensorSO(p+1,q,r+1,s+1) = 0.0;
-                                        MP2TensorSO(p,q+1,r+1,s+1) = 0.0;
-                                        MP2TensorSO(p+1,q+1,r+1,s+1) = (*MP2Tensor)(i,j,k,l);
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    MP2TensorSO(p,q,r,s) = (*MP2Tensor)(p/2,q/2,r/2,s/2);
+                    MP2TensorSO(p+1,q+1,r,s) = (*MP2Tensor)(p/2,q/2,r/2,s/2);
+                    MP2TensorSO(p,q,r+1,s+1) = (*MP2Tensor)(p/2,q/2,r/2,s/2);
+                    MP2TensorSO(p+1,q+1,r+1,s+1) = (*MP2Tensor)(p/2,q/2,r/2,s/2);
                 }
             }
         }
@@ -666,6 +645,7 @@ OOSpinOrbitalMP2::OOSpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd
     }
     
     TensorRank4 eriTensorSO = OOSpinOrbitalMP2::construct_so_ao_electron_integral_tensor();//this should be untouched AO tensor.
+    Eigen::Tensor<double,4> standard_eri_tensor = OOSpinOrbitalMP2::experimental_copy_eriTensorSO_to_standard_tensor_format(eriTensorSO);
     Eigen::MatrixXd H_core_SO = OOSpinOrbitalMP2::fock_build_so(H_core);
     Eigen::MatrixXd one_electron_integrals = OOSpinOrbitalMP2::rotate_so_sized_matrix(&H_core_SO, &Coeffs);
 
@@ -733,7 +713,7 @@ OOSpinOrbitalMP2::OOSpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd
     //Modifiable DIIS parameters
     //
      bool use_DIIS=false;
-     int DIIS_max_num_iters = 4;//Scuseria, Lee, Schaefer Chem Phys Lett 1896 recommend 8
+     int DIIS_max_num_iters = 8;//Scuseria, Lee, Schaefer Chem Phys Lett 1896 recommend 8
      double DIIS_storage_threshhold = 1e-0;
      double DIIS_threshhold = 1e-0;
 
@@ -842,7 +822,7 @@ OOSpinOrbitalMP2::OOSpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd
             Eigen::MatrixXd orbital_rotation_matrix = OOSpinOrbitalMP2::compute_newton_raphson_step(&Gen_fock, &F_SO);
             Coeffs = OOSpinOrbitalMP2::rotate_spin_orbital_coefficients(Coeffs, &orbital_rotation_matrix);
             one_electron_integrals = OOSpinOrbitalMP2::rotate_one_electron_integrals(&Coeffs, &H_core_SO);//CHECK IF CORRECT H_core!
-            two_electron_integrals = OOSpinOrbitalMP2::rotate_two_electron_integrals(&Coeffs, &eriTensorSO);//CHECK IF CORRECT ERITENSOR!
+            two_electron_integrals = OOSpinOrbitalMP2::rotate_two_electron_integrals(Coeffs, eriTensorSO);//CHECK IF CORRECT ERITENSOR!
             E_omp2 = OOSpinOrbitalMP2::calculate_E_oomp2(&one_particle_density, &two_particle_density, &one_electron_integrals, &two_electron_integrals);
             E_omp2 += enuc;
             diff_E = E_omp2 - old_E;
@@ -874,7 +854,8 @@ OOSpinOrbitalMP2::OOSpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd
             Eigen::MatrixXd orbital_rotation_matrix = OOSpinOrbitalMP2::compute_newton_raphson_step(&Gen_fock, &F_SO);
             Coeffs = OOSpinOrbitalMP2::rotate_spin_orbital_coefficients(Coeffs, &orbital_rotation_matrix);
             one_electron_integrals = OOSpinOrbitalMP2::rotate_one_electron_integrals(&Coeffs, &H_core_SO);//CHECK IF CORRECT H_core!
-            two_electron_integrals = OOSpinOrbitalMP2::rotate_two_electron_integrals(&Coeffs, &eriTensorSO);//CHECK IF CORRECT ERITENSOR!
+            two_electron_integrals = OOSpinOrbitalMP2::rotate_two_electron_integrals_experimental(Coeffs, standard_eri_tensor);//CHECK IF CORRECT ERITENSOR!
+            //two_electron_integrals = OOSpinOrbitalMP2::rotate_two_electron_integrals(Coeffs, eriTensorSO);//CHECK IF CORRECT ERITENSOR!
             E_omp2 = OOSpinOrbitalMP2::calculate_E_oomp2(&one_particle_density, &two_particle_density, &one_electron_integrals, &two_electron_integrals);
             E_omp2 += enuc;
             diff_E = E_omp2 - old_E;
@@ -1053,6 +1034,33 @@ OOSpinOrbitalMP2::OOSpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd
         //end DIIS interpolation and storage of interpolated doubles tensor to new iteration's error matrix
     }
 };
+
+double OOSpinOrbitalMP2::compute_condition_number(const int dim1, const Eigen::MatrixXd &A){
+    Eigen::FullPivLU<Eigen::MatrixXd> lu(A);
+    if(lu.isInvertible()) {//do invertibility check
+        Eigen::MatrixXd Ainv = lu.inverse();
+        double maxcol_Ainv = 0.0;
+        double maxcol_A = 0.0;
+        double temp_abs_sum_Ainv = 0.0;
+        double temp_abs_sum_A = 0.0;
+        for(int j = 0; j < dim1; j++ ){
+            for(int i = 0; i < dim1; i++) {
+                temp_abs_sum_Ainv += fabs(Ainv(i,j));
+                temp_abs_sum_A += fabs(A(i,j));
+            }
+            if(temp_abs_sum_Ainv > maxcol_Ainv) {maxcol_Ainv = temp_abs_sum_Ainv;}
+            temp_abs_sum_Ainv = 0.0;
+            if(temp_abs_sum_A > maxcol_A) {maxcol_A = temp_abs_sum_A;}
+            temp_abs_sum_A = 0.0;
+        }
+        return maxcol_Ainv*maxcol_A;
+    }
+    else{
+        //std::cout << "Warning: Matrix not invertible for condition number estimate. Error Matrix ill-conditioned." <<std::endl;
+        return -1.0;//condition number is never negative, so this is valid signal to switch away from CN.
+    }
+
+}
 
 Eigen::MatrixXd OOSpinOrbitalMP2::fock_build_sf(const Eigen::MatrixXd *P, const Eigen::MatrixXd *Coeffs) {//rename to fock_spinorbitalbuildforMP2
     Eigen::MatrixXd F_ao(nbfs, nbfs);
@@ -1414,22 +1422,111 @@ TensorRank4 OOSpinOrbitalMP2::construct_so_ao_electron_integral_tensor(){
     return eriTensorSObasis;
 }
 
-TensorRank4 OOSpinOrbitalMP2::rotate_two_electron_integrals(const Eigen::MatrixXd *rotated_coefficients, const TensorRank4 *eriTensorSO){
+TensorRank4 OOSpinOrbitalMP2::rotate_two_electron_integrals_experimental(const Eigen::MatrixXd &rotated_coefficients, const Eigen::Tensor<double, 4> &standard_eri_tensor){
+    Eigen::MatrixXd transposed_rotated_coefficients = rotated_coefficients.transpose();//need to transpose?
+    Eigen::Tensor<double,4> std_eri_tensor = standard_eri_tensor;
+    Eigen::Tensor<double,2> rotated_coefficients_tensor(2*nbfs,2*nbfs);
+    for(int p = 0; p < 2*nbfs; p++) {
+        for(int q = 0; q < 2*nbfs; q++) {
+            rotated_coefficients_tensor(p,q) = rotated_coefficients(p,q);
+        }
+    }
+
+    Eigen::array<Eigen::IndexPair<int>,1> product_dimensions = {Eigen::IndexPair<int>(0,0)};
+    Eigen::Tensor<double,4> rot1 = std_eri_tensor.contract(rotated_coefficients_tensor, product_dimensions);
+    product_dimensions = {Eigen::IndexPair<int>(0,0)};
+    Eigen::Tensor<double,4> rot2 = rot1.contract(rotated_coefficients_tensor, product_dimensions);
+    rot1.resize(0,0,0,0);
+    product_dimensions = {Eigen::IndexPair<int>(0,0)};
+    Eigen::Tensor<double,4> rot3 = rot2.contract(rotated_coefficients_tensor, product_dimensions);
+    rot2.resize(0,0,0,0);
+    product_dimensions = {Eigen::IndexPair<int>(0,0)};
+    Eigen::Tensor<double,4> rot4 = rot3.contract(rotated_coefficients_tensor, product_dimensions);
+    rot3.resize(0,0,0,0);
+
+    //Eigen::array<Eigen::IndexPair<int>, 2> product_dimensions = {Eigen::IndexPair<int>(0, 0), Eigen::IndexPair<int>(1, 0) };
+    //Eigen::Tensor<double,4> rot1 = std_eri_tensor.contract(rotated_coefficients_tensor, product_dimensions);
+    //product_dimensions = {Eigen::IndexPair<int>(2, 1), Eigen::IndexPair<int>(3, 1) };//31 or 13?
+    //Eigen::Tensor<double,4> rot2 = rot1.contract(rotated_coefficients_tensor, product_dimensions);
+
+    TensorRank4 rotated_two_electron_integrals(2*nbfs,2*nbfs,2*nbfs,2*nbfs);
+    for(int p = 0; p < 2*nbfs; p++) {
+        for(int q = 0; q < 2*nbfs; q++) {
+            for(int r = 0; r < 2*nbfs; r++) {
+                for(int s = 0; s < 2*nbfs; s++) {
+                    rotated_two_electron_integrals(p,q,r,s) = rot4(p,q,r,s);
+                }
+            }
+        }
+    }    
+    return rotated_two_electron_integrals;
+}
+
+Eigen::Tensor<double,4> OOSpinOrbitalMP2::experimental_copy_eriTensorSO_to_standard_tensor_format(const TensorRank4 &eriTensorSO){
+    Eigen::Tensor<double,4> standard_eri_tensor(2*nbfs,2*nbfs,2*nbfs,2*nbfs);
+    for(int p = 0; p < 2*nbfs; p++) {
+        for(int q = 0; q < 2*nbfs; q++) {
+            for(int r = 0; r < 2*nbfs; r++) {
+                for(int s = 0; s < 2*nbfs; s++) {
+                    standard_eri_tensor(p,q,r,s) = eriTensorSO(p,q,r,s);
+                }
+            }
+        }
+    }
+    return standard_eri_tensor;
+}
+
+TensorRank4 OOSpinOrbitalMP2::rotate_two_electron_integrals(const Eigen::MatrixXd &rotated_coefficients, const TensorRank4 &eriTensorSO){
+    //rotated_two_electron_integrals += (*rotated_coefficients).transpose() * (*rotated_coefficients).transpose() * (*eriTensorSO).operator() *rotated_coefficients * *rotated_coefficients;
+    TensorRank4 tensor_step_mu(2*nbfs, 2*nbfs, 2*nbfs, 2*nbfs);
+    tensor_step_mu.setZero();
+    for (int p = 0; p < 2 * nbfs; p++){
+         for (int q = 0; q < 2 * nbfs; q++){
+            for (int r = 0; r < 2 * nbfs; r++){
+                for (int s = 0; s < 2 * nbfs; s++){
+                    for (int mu = 0; mu < 2 * nbfs; mu++){
+                        tensor_step_mu(p,r,q,s) += rotated_coefficients(mu,p) * eriTensorSO(mu,r,q,s);
+                    }
+                }
+            }
+        }
+    }
+    TensorRank4 tensor_step_nu(2*nbfs, 2*nbfs, 2*nbfs, 2*nbfs);
+    tensor_step_nu.setZero();
+    for (int p = 0; p < 2 * nbfs; p++){
+         for (int q = 0; q < 2 * nbfs; q++){
+            for (int r = 0; r < 2 * nbfs; r++){
+                for (int s = 0; s < 2 * nbfs; s++){
+                    for (int nu = 0; nu < 2 * nbfs; nu++){
+                        tensor_step_nu(p,r,q,s) += rotated_coefficients(nu,q) * tensor_step_mu(p,r,nu,s);
+                    }
+                }
+            }
+        }
+    }
+    tensor_step_mu.clear();
+    TensorRank4 tensor_step_rho(2*nbfs, 2*nbfs, 2*nbfs, 2*nbfs);
+    tensor_step_rho.setZero();
+    for (int p = 0; p < 2 * nbfs; p++){
+         for (int q = 0; q < 2 * nbfs; q++){
+            for (int r = 0; r < 2 * nbfs; r++){
+                for (int s = 0; s < 2 * nbfs; s++){
+                    for (int rho = 0; rho < 2 * nbfs; rho++){
+                        tensor_step_rho(p,r,q,s) += rotated_coefficients(rho,r) * tensor_step_nu(p,rho,q,s);
+                    }
+                }
+            }
+        }
+    }
+    tensor_step_nu.clear();
     TensorRank4 rotated_two_electron_integrals(2*nbfs, 2*nbfs, 2*nbfs, 2*nbfs);
     rotated_two_electron_integrals.setZero();
-    //rotated_two_electron_integrals += (*rotated_coefficients).transpose() * (*rotated_coefficients).transpose() * (*eriTensorSO).operator() *rotated_coefficients * *rotated_coefficients;
-    for (int mu = 0; mu < 2 * nbfs; mu++){
-        for (int nu = 0; nu < 2 * nbfs; nu++){
-            for (int rho = 0; rho < 2 * nbfs; rho++){
-                for (int sigma = 0; sigma < 2 * nbfs; sigma++){
-                    for (int p = 0; p < 2 * nbfs; p++){
-                        for (int q = 0; q < 2 * nbfs; q++){
-                            for (int r = 0; r < 2 * nbfs; r++){
-                                for (int s = 0; s < 2 * nbfs; s++){
-                                    rotated_two_electron_integrals(p,r,q,s) += (*rotated_coefficients)(mu,p) * (*rotated_coefficients)(nu,q) * ((*eriTensorSO)(mu,rho,nu,sigma)) * (*rotated_coefficients)(rho,r) * (*rotated_coefficients)(sigma,s);//this one doesnt switch order upon complex conjugate
-                                }
-                            }
-                        }
+    for (int p = 0; p < 2 * nbfs; p++){
+         for (int q = 0; q < 2 * nbfs; q++){
+            for (int r = 0; r < 2 * nbfs; r++){
+                for (int s = 0; s < 2 * nbfs; s++){
+                    for (int sigma = 0; sigma < 2 * nbfs; sigma++){
+                        rotated_two_electron_integrals(p,r,q,s) += rotated_coefficients(sigma,s) * tensor_step_rho(p,r,q,sigma);
                     }
                 }
             }

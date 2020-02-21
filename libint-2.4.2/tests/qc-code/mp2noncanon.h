@@ -94,6 +94,8 @@ class OOSpinOrbitalMP2{
 
     Eigen::MatrixXd rotate_so_sized_matrix(const Eigen::MatrixXd *matrix_to_rotate, const Eigen::MatrixXd *coefficients);
 
+    Eigen::Tensor<double,4> experimental_copy_eriTensorSO_to_standard_tensor_format(const TensorRank4 &eriTensorSO);
+
     Eigen::MatrixXd construct_generalized_fock(const TensorRank4 *eriTensorSO, const Eigen::MatrixXd *H_core, const Eigen::MatrixXd *one_particle_density, const TensorRank4 *two_particle_density);
 
     Eigen::MatrixXd fock_build_sf(const Eigen::MatrixXd *P, const Eigen::MatrixXd *Coeffs);
@@ -125,7 +127,9 @@ class OOSpinOrbitalMP2{
 
     TensorRank4 construct_so_ao_electron_integral_tensor();
 
-    TensorRank4 rotate_two_electron_integrals(const Eigen::MatrixXd *rotated_coefficients, const TensorRank4 *eriTensorSO);
+    TensorRank4 rotate_two_electron_integrals(const Eigen::MatrixXd &rotated_coefficients, const TensorRank4 &eriTensorSO);
+
+    TensorRank4 rotate_two_electron_integrals_experimental(const Eigen::MatrixXd &rotated_coefficients, const Eigen::Tensor<double, 4> &eriTensorSO);
 
     double calculate_E_oomp2(const Eigen::MatrixXd *one_particle_density, const TensorRank4 *two_particle_density, const Eigen::MatrixXd *rotated_one_electron_integrals, const TensorRank4 *rotated_two_electron_integrals);
 };
