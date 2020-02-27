@@ -81,6 +81,14 @@ OMP2_SO::OMP2_SO(const TensorRank4 *eriTensor, Eigen::MatrixXd SFCoeffs, const i
     }
     printf("  E_MP2_ee = %20.12f\n", E_mp2_ee);
 
+
+    Eigen::MatrixXd rdm1e_hf;
+    Eigen::MatrixXd rdm1e_mp2;
+    Eigen::MatrixXd one_particle_density;
+    TensorRank4 two_particle_density(2*nbfs, 2*nbfs, 2*nbfs, 2*nbfs);
+    Eigen::MatrixXd orbital_rotation_parameter;
+    Eigen::MatrixXd Gen_fock = Eigen::MatrixXd::Zero(2*nbfs,2*nbfs);
+
     //START MP2 LOOP
     //
      int count_mp2 = 0;
@@ -91,10 +99,10 @@ OMP2_SO::OMP2_SO(const TensorRank4 *eriTensor, Eigen::MatrixXd SFCoeffs, const i
         residcounterSO = 0;
         TensorRank4 residualSO = OMP2_SO::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &doublesSO, &F_SO);
         doublesSO = OMP2_SO::update_doubles_so(&doublesSO, &residualSO, &F_SO);
-        Eigen::MatrixXd rdm1e_hf = OMP2_SO::build_one_particle_density_hf();
-        Eigen::MatrixXd rdm1e_mp2 = OMP2_SO::build_one_particle_density_mp2(&doublesSO);
-        Eigen::MatrixXd one_particle_density = OMP2_SO::build_total_one_particle_density(rdm1e_hf, rdm1e_mp2);
-        TensorRank4 two_particle_density = OMP2_SO::build_two_particle_density(&doublesSO, rdm1e_hf, rdm1e_mp2);
+        rdm1e_hf = OMP2_SO::build_one_particle_density_hf();
+        rdm1e_mp2 = OMP2_SO::build_one_particle_density_mp2(&doublesSO);
+        one_particle_density = OMP2_SO::build_total_one_particle_density(rdm1e_hf, rdm1e_mp2);
+        two_particle_density = OMP2_SO::build_two_particle_density(&doublesSO, rdm1e_hf, rdm1e_mp2);
         E_mp2 = OMP2_SO::calculate_E_oomp2(&one_particle_density, &two_particle_density, &one_electron_integrals, &two_electron_integrals);
         E_mp2 += enuc;
         printf("%3i        %20.12f          %5i\n", count_mp2, E_mp2,residcounterSO);
@@ -109,11 +117,11 @@ OMP2_SO::OMP2_SO(const TensorRank4 *eriTensor, Eigen::MatrixXd SFCoeffs, const i
      int DIIS_max_num_iters = 8;//Scuseria, Lee, Schaefer Chem Phys Lett 1896 recommend 8
      double DIIS_storage_threshhold = 1e-0;
      double DIIS_threshhold = 1e-0;
-     bool earlybird = true;//This runs a step before loop starts, removing the mp2 amplitude from the picture for DIIS. Found to be helpful in certain circumstances.
+     bool earlybird = true;//This calculates a few results from the MP2 step needed before loop starts, removing the mp2 amplitude from the picture for DIIS. Found to be helpful in certain circumstances.
      bool enforce_well_behaved_DIIS = true;
      std::string CN_handling;
      if(enforce_well_behaved_DIIS) {CN_handling = "reset";} //"shutoff" for permanent DIIS shutoff, "relax" to start DIIS relaxation scheme, "reset" for DIIS purge & immediate restart, "delay" for DIIS purge & delayed restart
-     //if(DIIS_storage_threshhold > 1e-3) {earlybird=true;}
+     if(use_DIIS) {earlybird=true;}
      bool ccpvdz = false;
      if(nbfs > 20) {ccpvdz = true;}
      bool checkpoint_assessment = false;
@@ -173,27 +181,8 @@ OMP2_SO::OMP2_SO(const TensorRank4 *eriTensor, Eigen::MatrixXd SFCoeffs, const i
     std::cout << "omp2: " << std::endl;
     std::cout << "Iteration             E_omp2            # residuals" << std::endl;
     
-    Eigen::MatrixXd rdm1e_hf;
-    Eigen::MatrixXd rdm1e_mp2;
-    Eigen::MatrixXd one_particle_density;
-    TensorRank4 two_particle_density(2*nbfs, 2*nbfs, 2*nbfs, 2*nbfs);
-    Eigen::MatrixXd orbital_rotation_parameter;
-    Eigen::MatrixXd Gen_fock = Eigen::MatrixXd::Zero(2*nbfs,2*nbfs);
-
-    if(earlybird) {
-        TensorRank4 residualSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
-        residualSO = OMP2_SO::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &DIIS_doublesSO, &F_SO);
-        doublesSO = OMP2_SO::update_doubles_so(&DIIS_doublesSO, &residualSO, &F_SO);//step 5: update amplitudes
-        rdm1e_hf = OMP2_SO::build_one_particle_density_hf();//step 6: build one and two particle densities
-        rdm1e_mp2 = OMP2_SO::build_one_particle_density_mp2(&DIIS_doublesSO);//step 6
-        one_particle_density = OMP2_SO::build_total_one_particle_density(rdm1e_hf, rdm1e_mp2);//step 6
-        two_particle_density = OMP2_SO::build_two_particle_density(&DIIS_doublesSO, rdm1e_hf, rdm1e_mp2);//step 6
-        Gen_fock = OMP2_SO::construct_generalized_fock(&two_electron_integrals, &one_electron_integrals, &one_particle_density, &two_particle_density);//step 7:compute the Newton-Raphson step
-        orbital_gradient = OMP2_SO::compute_orbital_gradient(Gen_fock);//step 7
-        orbital_rotation_parameter = OMP2_SO::compute_orbital_rotation_parameter(orbital_gradient, F_SO, level_shift);//step 7
-        collective_orbital_rotation_parameters = DIIS_orbitalsSO + orbital_rotation_parameter;//step 7
-        //printf("%3i        %20.12f            %i            Energy step:   %9.2e    earlybird\n", count, E_ccd, residcounterSO, diff_E);
-    }
+    //cycle_sync calculates a few results from the MP2 step needed before loop starts, removing the mp2 amplitude from the picture for DIIS. Found to be helpful in certain circumstances.
+    OMP2_SO::cycle_sync(Gen_fock, orbital_gradient, orbital_rotation_parameter, collective_orbital_rotation_parameters, F_SO, level_shift, two_electron_integrals, one_electron_integrals, one_particle_density, two_particle_density);
     
     F_SO = Eigen::MatrixXd::Zero(2*nbfs, 2*nbfs);
 
@@ -453,6 +442,7 @@ OMP2_SO::OMP2_SO(const TensorRank4 *eriTensor, Eigen::MatrixXd SFCoeffs, const i
         //end DIIS interpolation and storage of interpolated doubles tensor to new iteration's error matrix
     }
 };
+
 
 double OMP2_SO::compute_condition_number(const int dim1, const Eigen::MatrixXd &A){
     Eigen::FullPivLU<Eigen::MatrixXd> lu(A);
@@ -802,6 +792,13 @@ Eigen::MatrixXd OMP2_SO::compute_orbital_rotation_parameter(const Eigen::MatrixX
         }
     }
     return x_vo;
+}
+
+void OMP2_SO::cycle_sync(Eigen::MatrixXd &Gen_fock, Eigen::MatrixXd &orbital_gradient, Eigen::MatrixXd &orbital_rotation_parameter, Eigen::MatrixXd &collective_orbital_rotation_parameters, const Eigen::MatrixXd &F_SO, const double level_shift, const TensorRank4 &two_electron_integrals, const Eigen::MatrixXd &one_electron_integrals, const Eigen::MatrixXd &one_particle_density, const TensorRank4 &two_particle_density){
+    Gen_fock = OMP2_SO::construct_generalized_fock(&two_electron_integrals, &one_electron_integrals, &one_particle_density, &two_particle_density);//step 7:compute the Newton-Raphson step
+    orbital_gradient = OMP2_SO::compute_orbital_gradient(Gen_fock);//step 7
+    orbital_rotation_parameter = OMP2_SO::compute_orbital_rotation_parameter(orbital_gradient, F_SO, level_shift);//step 7
+    collective_orbital_rotation_parameters = orbital_rotation_parameter;//step 7}
 }
 
 Eigen::MatrixXd OMP2_SO::collective_newton_raphson_step(const Eigen::MatrixXd &collective_rotation){
