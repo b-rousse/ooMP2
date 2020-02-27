@@ -125,7 +125,7 @@ class OMP2_SO{
 
     Eigen::MatrixXd compute_orbital_rotation_parameter(const Eigen::MatrixXd &w, const Eigen::MatrixXd &fso, double level_shift);//DO LEVEL SHIFTING???
 
-    Eigen::MatrixXd diis_newton_raphson_step(const Eigen::MatrixXd &collective_rotation);
+    Eigen::MatrixXd collective_newton_raphson_step(const Eigen::MatrixXd &collective_rotation);
 
     Eigen::MatrixXd rotate_spin_orbital_coefficients(Eigen::MatrixXd SFCoeffs, const Eigen::MatrixXd *orbital_rotation_matrix);
 
