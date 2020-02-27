@@ -103,20 +103,20 @@ OOSpinOrbitalMP2::OOSpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd
 
     //Modifiable DIIS parameters
     //
-     bool use_DIIS=true;
+     bool use_DIIS=false;
      double level_shift = 0.0; //How much to shift the denominator in the newton-raphson step. Can be helpful with tricky convergence cases. MHG recommends 0.4
 
      int DIIS_max_num_iters = 8;//Scuseria, Lee, Schaefer Chem Phys Lett 1896 recommend 8
-     double DIIS_storage_threshhold = 1e-2;
-     double DIIS_threshhold = 1e-2;
-     bool earlybird = false;//This runs a step before loop starts, removing the mp2 amplitude from the picture for DIIS. Found to be helpful in certain circumstances.
+     double DIIS_storage_threshhold = 1e-0;
+     double DIIS_threshhold = 1e-0;
+     bool earlybird = true;//This runs a step before loop starts, removing the mp2 amplitude from the picture for DIIS. Found to be helpful in certain circumstances.
      bool enforce_well_behaved_DIIS = true;
      std::string CN_handling;
      if(enforce_well_behaved_DIIS) {CN_handling = "reset";} //"shutoff" for permanent DIIS shutoff, "relax" to start DIIS relaxation scheme, "reset" for DIIS purge & immediate restart, "delay" for DIIS purge & delayed restart
      //if(DIIS_storage_threshhold > 1e-3) {earlybird=true;}
      bool ccpvdz = false;
      if(nbfs > 20) {ccpvdz = true;}
-     bool checkpoint_assessment = true;
+     bool checkpoint_assessment = false;
      bool print_diis_results = false;
     //end Modifiable DIIS parameters
 
@@ -140,7 +140,7 @@ OOSpinOrbitalMP2::OOSpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd
      Eigen::MatrixXd DIIS_orbitalsSO = Eigen::MatrixXd::Zero(2*nbfs,2*nbfs);
 
      Eigen::MatrixXd orbital_gradient;
-     Eigen::MatrixXd running_sum_orbital_rotation_parameters = Eigen::MatrixXd::Zero(2*nbfs, 2*nbfs);
+     Eigen::MatrixXd collective_orbital_rotation_parameters = Eigen::MatrixXd::Zero(2*nbfs, 2*nbfs);
      bool DIIS_store_switch = false;//to prevent deactivating DIIS if we go back above E threshhold
      bool MK_DIIS_time = true;
      int diiscount_at_reset = 0;
@@ -172,28 +172,34 @@ OOSpinOrbitalMP2::OOSpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd
     //
     std::cout << "omp2: " << std::endl;
     std::cout << "Iteration             E_omp2            # residuals" << std::endl;
-    /*
-    if(earlybird) {
-        count++;
-        Eigen::MatrixXd one_particle_intermediate = OOSpinOrbitalMP2::construct_one_particle_intermediate(F_SO, doublesSO, two_electron_integrals, stanton_CCD);
-        TensorRank4 two_particle_intermediate = OOSpinOrbitalMP2::construct_two_particle_intermediate(doublesSO, two_electron_integrals);
-        TensorRank4 residualSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
-        residualSO.setZero();
-        residualSO = OOSpinOrbitalMP2::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &doublesSO, &one_particle_intermediate, two_particle_intermediate);
-        doublesSO = OOSpinOrbitalMP2::update_doubles_so(&doublesSO, &residualSO, &F_SO);
-        E_ccd = OOSpinOrbitalMP2::canonical_E_ee_so(two_electron_integrals, doublesSO);
-        diff_E = E_ccd - old_E;
-        old_E = E_ccd;
-        if(stanton_CCD){printf("%3i        %20.12f                           Energy step:   %9.2e    earlybird\n", count, E_ccd, diff_E);}
-        else{printf("%3i        %20.12f            %i            Energy step:   %9.2e    earlybird\n", count, E_ccd, residcounterSO, diff_E);}
-    }*/
     
+    Eigen::MatrixXd rdm1e_hf;
+    Eigen::MatrixXd rdm1e_mp2;
+    Eigen::MatrixXd one_particle_density;
+    TensorRank4 two_particle_density(2*nbfs, 2*nbfs, 2*nbfs, 2*nbfs);
+    Eigen::MatrixXd orbital_rotation_parameter;
     Eigen::MatrixXd Gen_fock = Eigen::MatrixXd::Zero(2*nbfs,2*nbfs);
+
+    if(earlybird) {
+        TensorRank4 residualSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
+        residualSO = OOSpinOrbitalMP2::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &DIIS_doublesSO, &F_SO);
+        doublesSO = OOSpinOrbitalMP2::update_doubles_so(&DIIS_doublesSO, &residualSO, &F_SO);//step 5: update amplitudes
+        rdm1e_hf = OOSpinOrbitalMP2::build_one_particle_density_hf();//step 6: build one and two particle densities
+        rdm1e_mp2 = OOSpinOrbitalMP2::build_one_particle_density_mp2(&DIIS_doublesSO);//step 6
+        one_particle_density = OOSpinOrbitalMP2::build_total_one_particle_density(rdm1e_hf, rdm1e_mp2);//step 6
+        two_particle_density = OOSpinOrbitalMP2::build_two_particle_density(&DIIS_doublesSO, rdm1e_hf, rdm1e_mp2);//step 6
+        Gen_fock = OOSpinOrbitalMP2::construct_generalized_fock(&two_electron_integrals, &one_electron_integrals, &one_particle_density, &two_particle_density);//step 7:compute the Newton-Raphson step
+        orbital_gradient = OOSpinOrbitalMP2::compute_orbital_gradient(Gen_fock);//step 7
+        orbital_rotation_parameter = OOSpinOrbitalMP2::compute_orbital_rotation_parameter(orbital_gradient, F_SO, level_shift);//step 7
+        collective_orbital_rotation_parameters = DIIS_orbitalsSO + orbital_rotation_parameter;//step 7
+        //printf("%3i        %20.12f            %i            Energy step:   %9.2e    earlybird\n", count, E_ccd, residcounterSO, diff_E);
+    }
+    
     F_SO = Eigen::MatrixXd::Zero(2*nbfs, 2*nbfs);
 
     while(fabs(diff_E) > tol_E || residcounterSO > 0) {
         count++;
-        for(int p = 0; p < 2*nbfs; p++){
+        for(int p = 0; p < 2*nbfs; p++){//step 3 : build fock matrix
             for(int q = 0; q < 2*nbfs; q++){
                 F_SO(p,q) = one_electron_integrals(p,q);
                 for(int i = 0; i < 2*numocc; i++){
@@ -210,73 +216,141 @@ OOSpinOrbitalMP2::OOSpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd
             //do something for rot? No, as its iterative construction doesn't overlap other iterations
         }
         //get doublesSO and check for convergence
+        
+
+        //if(DIIS_time && MK_DIIS_time){
+         //    TensorRank4 residualSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
+         //    residualSO = OOSpinOrbitalMP2::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &DIIS_doublesSO, &F_SO);
+         //    doublesSO = OOSpinOrbitalMP2::update_doubles_so(&DIIS_doublesSO, &residualSO, &F_SO);//step 5: update amplitudes
+         //    Eigen::MatrixXd rdm1e_hf = OOSpinOrbitalMP2::build_one_particle_density_hf();//step 6: build one and two particle densities
+         //    Eigen::MatrixXd rdm1e_mp2 = OOSpinOrbitalMP2::build_one_particle_density_mp2(&DIIS_doublesSO);//step 6
+         //    Eigen::MatrixXd one_particle_density = OOSpinOrbitalMP2::build_total_one_particle_density(rdm1e_hf, rdm1e_mp2);//step 6
+         //    TensorRank4 two_particle_density = OOSpinOrbitalMP2::build_two_particle_density(&DIIS_doublesSO, rdm1e_hf, rdm1e_mp2);//step 6
+         //    Gen_fock = OOSpinOrbitalMP2::construct_generalized_fock(&two_electron_integrals, &one_electron_integrals, &one_particle_density, &two_particle_density);//step 7:compute the Newton-Raphson step
+         //    orbital_gradient = OOSpinOrbitalMP2::compute_orbital_gradient(Gen_fock);//step 7
+         //    Eigen::MatrixXd orbital_rotation_parameter = OOSpinOrbitalMP2::compute_orbital_rotation_parameter(orbital_gradient, F_SO, level_shift);//step 7
+         //    collective_orbital_rotation_parameters = DIIS_orbitalsSO + orbital_rotation_parameter;//step 7
+         //    Eigen::MatrixXd orbital_rotation_matrix = OOSpinOrbitalMP2::diis_newton_raphson_step(collective_orbital_rotation_parameters);//step 8: build the Newton-Raphson orbital rotation matrix
+         //    //Eigen::MatrixXd orbital_rotation_matrix = OOSpinOrbitalMP2::compute_newton_raphson_step(&Gen_fock, &F_SO, level_shift);
+         //    Coeffs = OOSpinOrbitalMP2::rotate_spin_orbital_coefficients(canon_coeffs, &orbital_rotation_matrix);//step 9: rotate the spin-orbital coefficients
+         //    one_electron_integrals = OOSpinOrbitalMP2::rotate_one_electron_integrals(&Coeffs, &H_core_SO);//step 10: transform the one- and two-electron integrals from the ao basis to the new spin-orbital basis.
+         //    two_electron_integrals = OOSpinOrbitalMP2::rotate_two_electron_integrals_experimental(Coeffs, standard_eri_tensor);//step 10
+         //    //two_electron_integrals = OOSpinOrbitalMP2::rotate_two_electron_integrals(Coeffs, eriTensorSO);
+         //    E_omp2 = OOSpinOrbitalMP2::calculate_E_oomp2(&one_particle_density, &two_particle_density, &one_electron_integrals, &two_electron_integrals);//step 11: evaluate the energy
+         //    E_omp2 += enuc;
+         //    diff_E = E_omp2 - old_E;
+         //    old_E = E_omp2;
+         //    printf("%3i        %20.12f          %5i            Energy step:   %9.2e    DIIS\n", count, E_omp2, residcounterSO, diff_E);
+         //    if (fabs(diff_E) < tol_E && residcounterSO == 0) {//technically not needed, as while loop handles it. Although ugly, it prevents waste this way.
+         //        double true_E = 0.0;
+         //        if (nbfs == 7) {true_E= -74.991464031377;}
+         //        else if (ccpvdz) {true_E = -0.222564795889;}
+         //        else {true_E = 0.0;}
+         //        printf("Calculation completed in %i iterations. Final E: %20.12f. Target E: %20.12f. Difference in E: %1.1e\n", count, E_omp2, true_E, true_E - E_omp2);
+         //        exit(EXIT_SUCCESS);
+         //    }
+         //    //if(unorthodox_error_construction){
+         //        //if I did this here, I'd need to reformulate doubles update function, as running it currently affects DIIS_doublesSO
+         //        //DIIS_error_vectors_t2.push_back(DIIS_doublesSO.resizeR4TensortoVector(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc));
+         //    //}
+         //}
+         //else {
+         //    TensorRank4 residualSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
+         //    residualSO = OOSpinOrbitalMP2::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &doublesSO, &F_SO);
+         //    doublesSO = OOSpinOrbitalMP2::update_doubles_so(&doublesSO, &residualSO, &F_SO);
+         //    Eigen::MatrixXd rdm1e_hf = OOSpinOrbitalMP2::build_one_particle_density_hf();
+         //    Eigen::MatrixXd rdm1e_mp2 = OOSpinOrbitalMP2::build_one_particle_density_mp2(&doublesSO);
+         //    Eigen::MatrixXd one_particle_density = OOSpinOrbitalMP2::build_total_one_particle_density(rdm1e_hf, rdm1e_mp2);
+         //    TensorRank4 two_particle_density = OOSpinOrbitalMP2::build_two_particle_density(&doublesSO, rdm1e_hf, rdm1e_mp2);
+         //    Gen_fock = OOSpinOrbitalMP2::construct_generalized_fock(&two_electron_integrals, &one_electron_integrals, &one_particle_density, &two_particle_density);
+         //    orbital_gradient = OOSpinOrbitalMP2::compute_orbital_gradient(Gen_fock);
+         //    Eigen::MatrixXd orbital_rotation_parameter = OOSpinOrbitalMP2::compute_orbital_rotation_parameter(orbital_gradient, F_SO, level_shift);
+         //    collective_orbital_rotation_parameters = collective_orbital_rotation_parameters + orbital_rotation_parameter;
+         //    //Eigen::MatrixXd orbital_rotation_matrix = OOSpinOrbitalMP2::compute_newton_raphson_step(&Gen_fock, &F_SO, level_shift);
+         //    Eigen::MatrixXd orbital_rotation_matrix = OOSpinOrbitalMP2::diis_newton_raphson_step(collective_orbital_rotation_parameters);
+         //    Coeffs = OOSpinOrbitalMP2::rotate_spin_orbital_coefficients(canon_coeffs, &orbital_rotation_matrix);
+         //    one_electron_integrals = OOSpinOrbitalMP2::rotate_one_electron_integrals(&Coeffs, &H_core_SO);//CHECK IF CORRECT H_core!
+         //    two_electron_integrals = OOSpinOrbitalMP2::rotate_two_electron_integrals_experimental(Coeffs, standard_eri_tensor);//CHECK IF CORRECT ERITENSOR!
+         //    //two_electron_integrals = OOSpinOrbitalMP2::rotate_two_electron_integrals(Coeffs, eriTensorSO);//CHECK IF CORRECT ERITENSOR!
+         //    E_omp2 = OOSpinOrbitalMP2::calculate_E_oomp2(&one_particle_density, &two_particle_density, &one_electron_integrals, &two_electron_integrals);
+         //    E_omp2 += enuc;
+         //    diff_E = E_omp2 - old_E;
+         //    old_E = E_omp2;
+         //    printf("%3i        %20.12f          %5i            Energy step:   %9.2e\n", count, E_omp2,residcounterSO, diff_E);
+         //    if (fabs(diff_E) < tol_E && residcounterSO == 0) {
+         //        double true_E = 0.0;
+         //        if (nbfs == 7) {true_E= -74.991464031377;}
+         //        else if (ccpvdz) {true_E = -0.222564795889;}
+         //        else {true_E = 0.0;}
+         //        printf("Calculation completed in %i iterations. Final E: %20.12f. Target E: %20.12f. Difference in E: %1.1e\n", count, E_omp2, true_E, true_E - E_omp2);
+         //        exit(EXIT_SUCCESS);
+         //    }
+        //}
+
         if(DIIS_time && MK_DIIS_time){
-            TensorRank4 residualSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
-            residualSO = OOSpinOrbitalMP2::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &DIIS_doublesSO, &F_SO);
-            doublesSO = OOSpinOrbitalMP2::update_doubles_so(&DIIS_doublesSO, &residualSO, &F_SO);
-            Eigen::MatrixXd rdm1e_hf = OOSpinOrbitalMP2::build_one_particle_density_hf();
-            Eigen::MatrixXd rdm1e_mp2 = OOSpinOrbitalMP2::build_one_particle_density_mp2(&DIIS_doublesSO);
-            Eigen::MatrixXd one_particle_density = OOSpinOrbitalMP2::build_total_one_particle_density(rdm1e_hf, rdm1e_mp2);
-            TensorRank4 two_particle_density = OOSpinOrbitalMP2::build_two_particle_density(&DIIS_doublesSO, rdm1e_hf, rdm1e_mp2);
-            Gen_fock = OOSpinOrbitalMP2::construct_generalized_fock(&two_electron_integrals, &one_electron_integrals, &one_particle_density, &two_particle_density);
-            orbital_gradient = OOSpinOrbitalMP2::compute_orbital_gradient(Gen_fock);
-            Eigen::MatrixXd orbital_rotation_parameter = OOSpinOrbitalMP2::compute_orbital_rotation_parameter(orbital_gradient, F_SO, level_shift);
-            running_sum_orbital_rotation_parameters = DIIS_orbital_rotation_parameters[diiscount] + orbital_rotation_parameter;
-            Eigen::MatrixXd orbital_rotation_matrix = OOSpinOrbitalMP2::diis_newton_raphson_step(running_sum_orbital_rotation_parameters);
-            //Eigen::MatrixXd orbital_rotation_matrix = OOSpinOrbitalMP2::compute_newton_raphson_step(&Gen_fock, &F_SO, level_shift);
-            Coeffs = OOSpinOrbitalMP2::rotate_spin_orbital_coefficients(Coeffs, &orbital_rotation_matrix);
-            one_electron_integrals = OOSpinOrbitalMP2::rotate_one_electron_integrals(&Coeffs, &H_core_SO);
-            two_electron_integrals = OOSpinOrbitalMP2::rotate_two_electron_integrals_experimental(Coeffs, standard_eri_tensor);
-            //two_electron_integrals = OOSpinOrbitalMP2::rotate_two_electron_integrals(Coeffs, eriTensorSO);
-            E_omp2 = OOSpinOrbitalMP2::calculate_E_oomp2(&one_particle_density, &two_particle_density, &one_electron_integrals, &two_electron_integrals);
-            E_omp2 += enuc;
-            diff_E = E_omp2 - old_E;
-            old_E = E_omp2;
-            printf("%3i        %20.12f          %5i            Energy step:   %9.2e    DIIS\n", count, E_omp2, residcounterSO, diff_E);
-            if (fabs(diff_E) < tol_E && residcounterSO == 0) {//technically not needed, as while loop handles it, but although ugly, it prevents waste this way.
+            Eigen::MatrixXd orbital_rotation_matrix = OOSpinOrbitalMP2::diis_newton_raphson_step(DIIS_orbitalsSO);//step 8: build the Newton-Raphson orbital rotation matrix
+            Coeffs = OOSpinOrbitalMP2::rotate_spin_orbital_coefficients(canon_coeffs, &orbital_rotation_matrix);//step 9: rotate the spin-orbital coefficients
+            one_electron_integrals = OOSpinOrbitalMP2::rotate_one_electron_integrals(&Coeffs, &H_core_SO);//step 10: transform the one- and two-electron integrals from the ao basis to the new spin-orbital basis.
+            two_electron_integrals = OOSpinOrbitalMP2::rotate_two_electron_integrals_experimental(Coeffs, standard_eri_tensor);//step 10
+            // vibe check
+             E_omp2 = OOSpinOrbitalMP2::calculate_E_oomp2(&one_particle_density, &two_particle_density, &one_electron_integrals, &two_electron_integrals);//step 11: evaluate the energy
+             E_omp2 += enuc;
+             diff_E = E_omp2 - old_E;
+             old_E = E_omp2;
+             printf("%3i        %20.12f          %5i            Energy step:   %9.2e    DIIS\n", count, E_omp2, residcounterSO, diff_E);
+             if (fabs(diff_E) < tol_E && residcounterSO == 0) {//technically not needed, as while loop handles it. Although ugly, it prevents waste this way.
                 double true_E = 0.0;
                 if (nbfs == 7) {true_E= -74.991464031377;}
                 else if (ccpvdz) {true_E = -0.222564795889;}
                 else {true_E = 0.0;}
                 printf("Calculation completed in %i iterations. Final E: %20.12f. Target E: %20.12f. Difference in E: %1.1e\n", count, E_omp2, true_E, true_E - E_omp2);
                 exit(EXIT_SUCCESS);
-            }
-            //if(unorthodox_error_construction){
-                //if I did this here, I'd need to reformulate doubles update function, as running it currently affects DIIS_doublesSO
-                //DIIS_error_vectors_t2.push_back(DIIS_doublesSO.resizeR4TensortoVector(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc));
-            //}
-
+             }
+            //
+            TensorRank4 residualSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
+            residualSO = OOSpinOrbitalMP2::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &DIIS_doublesSO, &F_SO);
+            doublesSO = OOSpinOrbitalMP2::update_doubles_so(&DIIS_doublesSO, &residualSO, &F_SO);//step 5: update amplitudes
+            rdm1e_hf = OOSpinOrbitalMP2::build_one_particle_density_hf();//step 6: build one and two particle densities
+            rdm1e_mp2 = OOSpinOrbitalMP2::build_one_particle_density_mp2(&DIIS_doublesSO);//step 6
+            one_particle_density = OOSpinOrbitalMP2::build_total_one_particle_density(rdm1e_hf, rdm1e_mp2);//step 6
+            two_particle_density = OOSpinOrbitalMP2::build_two_particle_density(&DIIS_doublesSO, rdm1e_hf, rdm1e_mp2);//step 6
+            Gen_fock = OOSpinOrbitalMP2::construct_generalized_fock(&two_electron_integrals, &one_electron_integrals, &one_particle_density, &two_particle_density);//step 7:compute the Newton-Raphson step
+            orbital_gradient = OOSpinOrbitalMP2::compute_orbital_gradient(Gen_fock);//step 7
+            Eigen::MatrixXd orbital_rotation_parameter = OOSpinOrbitalMP2::compute_orbital_rotation_parameter(orbital_gradient, F_SO, level_shift);//step 7
+            collective_orbital_rotation_parameters = DIIS_orbitalsSO + orbital_rotation_parameter;//step 7
         }
         else {
+            Eigen::MatrixXd orbital_rotation_matrix = OOSpinOrbitalMP2::diis_newton_raphson_step(collective_orbital_rotation_parameters);
+            Coeffs = OOSpinOrbitalMP2::rotate_spin_orbital_coefficients(canon_coeffs, &orbital_rotation_matrix);
+            one_electron_integrals = OOSpinOrbitalMP2::rotate_one_electron_integrals(&Coeffs, &H_core_SO);//CHECK IF CORRECT H_core!
+            two_electron_integrals = OOSpinOrbitalMP2::rotate_two_electron_integrals_experimental(Coeffs, standard_eri_tensor);//CHECK IF CORRECT ERITENSOR!
+            //vibe check
+             E_omp2 = OOSpinOrbitalMP2::calculate_E_oomp2(&one_particle_density, &two_particle_density, &one_electron_integrals, &two_electron_integrals);
+             E_omp2 += enuc;
+             diff_E = E_omp2 - old_E;
+             old_E = E_omp2;
+             printf("%3i        %20.12f          %5i            Energy step:   %9.2e\n", count, E_omp2,residcounterSO, diff_E);
+             if (fabs(diff_E) < tol_E && residcounterSO == 0) {
+                 double true_E = 0.0;
+                 if (nbfs == 7) {true_E= -74.991464031377;}
+                 else if (ccpvdz) {true_E = -0.222564795889;}
+                 else {true_E = 0.0;}
+                 printf("Calculation completed in %i iterations. Final E: %20.12f. Target E: %20.12f. Difference in E: %1.1e\n", count, E_omp2, true_E, true_E - E_omp2);
+                 exit(EXIT_SUCCESS);
+             }
+            //
             TensorRank4 residualSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
             residualSO = OOSpinOrbitalMP2::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &doublesSO, &F_SO);
             doublesSO = OOSpinOrbitalMP2::update_doubles_so(&doublesSO, &residualSO, &F_SO);
-            Eigen::MatrixXd rdm1e_hf = OOSpinOrbitalMP2::build_one_particle_density_hf();
-            Eigen::MatrixXd rdm1e_mp2 = OOSpinOrbitalMP2::build_one_particle_density_mp2(&doublesSO);
-            Eigen::MatrixXd one_particle_density = OOSpinOrbitalMP2::build_total_one_particle_density(rdm1e_hf, rdm1e_mp2);
-            TensorRank4 two_particle_density = OOSpinOrbitalMP2::build_two_particle_density(&doublesSO, rdm1e_hf, rdm1e_mp2);
+            rdm1e_hf = OOSpinOrbitalMP2::build_one_particle_density_hf();
+            rdm1e_mp2 = OOSpinOrbitalMP2::build_one_particle_density_mp2(&doublesSO);
+            one_particle_density = OOSpinOrbitalMP2::build_total_one_particle_density(rdm1e_hf, rdm1e_mp2);
+            two_particle_density = OOSpinOrbitalMP2::build_two_particle_density(&doublesSO, rdm1e_hf, rdm1e_mp2);
             Gen_fock = OOSpinOrbitalMP2::construct_generalized_fock(&two_electron_integrals, &one_electron_integrals, &one_particle_density, &two_particle_density);
             orbital_gradient = OOSpinOrbitalMP2::compute_orbital_gradient(Gen_fock);
             Eigen::MatrixXd orbital_rotation_parameter = OOSpinOrbitalMP2::compute_orbital_rotation_parameter(orbital_gradient, F_SO, level_shift);
-            running_sum_orbital_rotation_parameters = running_sum_orbital_rotation_parameters + orbital_rotation_parameter;
-            Eigen::MatrixXd orbital_rotation_matrix = OOSpinOrbitalMP2::compute_newton_raphson_step(&Gen_fock, &F_SO, level_shift);
-            Coeffs = OOSpinOrbitalMP2::rotate_spin_orbital_coefficients(Coeffs, &orbital_rotation_matrix);
-            one_electron_integrals = OOSpinOrbitalMP2::rotate_one_electron_integrals(&Coeffs, &H_core_SO);//CHECK IF CORRECT H_core!
-            two_electron_integrals = OOSpinOrbitalMP2::rotate_two_electron_integrals_experimental(Coeffs, standard_eri_tensor);//CHECK IF CORRECT ERITENSOR!
-            //two_electron_integrals = OOSpinOrbitalMP2::rotate_two_electron_integrals(Coeffs, eriTensorSO);//CHECK IF CORRECT ERITENSOR!
-            E_omp2 = OOSpinOrbitalMP2::calculate_E_oomp2(&one_particle_density, &two_particle_density, &one_electron_integrals, &two_electron_integrals);
-            E_omp2 += enuc;
-            diff_E = E_omp2 - old_E;
-            old_E = E_omp2;
-            printf("%3i        %20.12f          %5i            Energy step:   %9.2e\n", count, E_omp2,residcounterSO, diff_E);
-            if (fabs(diff_E) < tol_E && residcounterSO == 0) {
-                double true_E = 0.0;
-                if (nbfs == 7) {true_E= -74.991464031377;}
-                else if (ccpvdz) {true_E = -0.222564795889;}
-                else {true_E = 0.0;}
-                printf("Calculation completed in %i iterations. Final E: %20.12f. Target E: %20.12f. Difference in E: %1.1e\n", count, E_omp2, true_E, true_E - E_omp2);
-                exit(EXIT_SUCCESS);
-            }
+            collective_orbital_rotation_parameters = collective_orbital_rotation_parameters + orbital_rotation_parameter;
+            
         }
         //end get doublesSO and convergence check
         if(checkpoint_assessment){std::cout << "line " << __LINE__ << " reached." << std::endl;}
@@ -288,23 +362,21 @@ OOSpinOrbitalMP2::OOSpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd
             //DIIS storage and cleanup
             DIIS_energies.push_back(E_omp2);
             DIIS_Tensors.push_back(doublesSO);
-            DIIS_orbital_rotation_parameters.push_back(running_sum_orbital_rotation_parameters);
-            if (!DIIS_time) {//still storing pre-DIIS trigger
-                //        if(diiscount == 0 || recent_reset) {
+            DIIS_orbital_rotation_parameters.push_back(collective_orbital_rotation_parameters);
+            DIIS_error_vectors_rot.push_back(orbital_gradient);
+            if (!DIIS_time) {
                 if(diiscount == 0 || recent_reset) {
                     recent_reset = false;
                     DIIS_error_vectors_t2[diiscount] = DIIS_Tensors[diiscount].resizeR4TensortoVector(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc) - DIIS_error_vectors_t2[diiscount];
-                    DIIS_error_vectors_rot.push_back(orbital_gradient);
                 }
                 else {
                     DIIS_error_vectors_t2.push_back(DIIS_Tensors[diiscount].resizeR4TensortoVector(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc) - DIIS_Tensors[diiscount - 1].resizeR4TensortoVector(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc)); 
-                    DIIS_error_vectors_rot.push_back(orbital_gradient);
                 }
             }
             else {//Now storage changes after DIIS has been triggered.
                 DIIS_error_vectors_t2[diiscount] = DIIS_Tensors[diiscount].resizeR4TensortoVector(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc) - DIIS_error_vectors_t2[diiscount];//this looks weird but is er(i)=t(i)-t_interpolated(i-1), where t_interpolated(i-1) is the DIIS interpolated t that immediately led to t(i).
-                DIIS_error_vectors_rot.push_back(orbital_gradient);
             }
+            
             if(diiscount - diiscount_at_reset >= DIIS_max_num_iters){//trailing cleanup of previous iterates:only keep the needed! diiscount + 1?//unsure if need diiscount_at_reset here
                 DIIS_error_vectors_t2[diiscount - DIIS_max_num_iters].resize(0);//CAREFUL: IF we change DIIS_max_num_iters upon reset, this cleanup routine will miss entries.
                 DIIS_Tensors[diiscount - DIIS_max_num_iters].clear();
@@ -398,16 +470,13 @@ OOSpinOrbitalMP2::OOSpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd
 
         //DIIS interpolation and storage of interpolated doubles tensor to new iteration's error matrix
         if(DIIS_time && MK_DIIS_time){
-            if(diiscount==0 && DIIS_orbital_rotation_parameters.size()==0){
-                DIIS_orbital_rotation_parameters.push_back(running_sum_orbital_rotation_parameters);
-            }
             //std::cout << "length of tensors (errors) vector : " << DIIS_Tensors.size() << " (" << DIIS_error_vectors_t2.size() << ")" <<std::endl;
             if(checkpoint_assessment){std::cout << "line " << __LINE__ << " reached." << std::endl;}
             for(int i = 0 ; i < effective_DIIS_num_iters; i++){
                 for(int j = 0; j < effective_DIIS_num_iters; j++){
                     DIIS_error_matrix(i,j) = (DIIS_error_vectors_t2[i + diiscount + 1 - effective_DIIS_num_iters].transpose() * DIIS_error_vectors_t2[j + diiscount + 1 - effective_DIIS_num_iters]);//This bugger was all 0 for i,j < num_iters 
                     //DIIS_error_matrix(i,j) += (DIIS_error_vectors_rot[i + diiscount + 1 - effective_DIIS_num_iters] * DIIS_error_vectors_rot[j + diiscount + 1 - effective_DIIS_num_iters]).sum();//This bugger was all 0 for i,j < num_iters                 
-                    DIIS_error_matrix(i,j) += (DIIS_error_vectors_rot[i + diiscount + 1 - effective_DIIS_num_iters].transpose() * DIIS_error_vectors_rot[j + diiscount + 1 - effective_DIIS_num_iters]).sum();//This bugger was all 0 for i,j < num_iters                 
+                    DIIS_error_matrix(i,j) += DIIS_error_vectors_rot[i + diiscount + 1 - effective_DIIS_num_iters].cwiseProduct(DIIS_error_vectors_rot[j + diiscount + 1 - effective_DIIS_num_iters]).sum();//This bugger was all 0 for i,j < num_iters                 
                 }
                 DIIS_error_matrix(effective_DIIS_num_iters,i) = -1.0;
                 DIIS_error_matrix(i,effective_DIIS_num_iters) = -1.0;
@@ -448,12 +517,12 @@ OOSpinOrbitalMP2::OOSpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd
                         }
                     }
                 }
-                for(int p = 0; p < 2*nbfs; p++){
-                    for (int q = 0; q < 2*nbfs; q++){
-                        DIIS_orbitalsSO(p,q) += x(s) * (DIIS_orbital_rotation_parameters[s + diiscount - effective_DIIS_num_iters + 1])(p,q);
-                    }
-                }
-                //DIIS_rotation_matrix_SO += x(s) * DIIS_rotation_matrices[s + diiscount - effective_DIIS_num_iters + 1];
+                //for(int p = 0; p < 2*nbfs; p++){
+                //    for (int q = 0; q < 2*nbfs; q++){
+                //        DIIS_orbitalsSO(p,q) += x(s) * (DIIS_orbital_rotation_parameters[s + diiscount - effective_DIIS_num_iters + 1])(p,q);
+                //    }
+                //}
+                DIIS_orbitalsSO += x(s) * DIIS_orbital_rotation_parameters[s + diiscount - effective_DIIS_num_iters + 1];
             }
 
             if(checkpoint_assessment){std::cout << "line " << __LINE__ << " reached." << std::endl;}
@@ -820,7 +889,7 @@ Eigen::MatrixXd OOSpinOrbitalMP2::compute_orbital_rotation_parameter(const Eigen
 }
 
 Eigen::MatrixXd OOSpinOrbitalMP2::diis_newton_raphson_step(const Eigen::MatrixXd &collective_rotation){
-    Eigen::MatrixXd orbital_rotation_matrix_exponent = collective_rotation - collective_rotation.transpose();//this is uppercase kappa bar in 2013 Bozkaya OOCEPA (eqn 49)
+    Eigen::MatrixXd orbital_rotation_matrix_exponent = collective_rotation - collective_rotation.adjoint();//this is uppercase kappa bar in 2013 Bozkaya OOCEPA (eqn 49)
     Eigen::MatrixXd orbital_rotation_matrix = orbital_rotation_matrix_exponent.exp();//build orbital rotation matrix. eqn 50 in 2013 Bozkaya OOCEPA
     return orbital_rotation_matrix;
 }
