@@ -76,7 +76,7 @@ class SpinOrbitalMP2{
 
 };
 
-class OOSpinOrbitalMP2{
+class OMP2_SO{
     public:
     const TensorRank4 eriTensor;//make sure I pass instance of class the reference to eriTensor, NOT make a copy.
     const int nbfs, numocc;
@@ -88,7 +88,7 @@ class OOSpinOrbitalMP2{
     Eigen::MatrixXd H_core;
     Eigen::VectorXd Evals;
 
-    OOSpinOrbitalMP2(const TensorRank4 *eriTensor, const Eigen::MatrixXd SFCoeffs, const int nbfs, const int numocc, Eigen::VectorXd *Evals, Eigen::MatrixXd *H_core, const Eigen::MatrixXd *S, const double enuc);
+    OMP2_SO(const TensorRank4 *eriTensor, const Eigen::MatrixXd SFCoeffs, const int nbfs, const int numocc, Eigen::VectorXd *Evals, Eigen::MatrixXd *H_core, const Eigen::MatrixXd *S, const double enuc);
 
     double compute_condition_number(const int dim1, const Eigen::MatrixXd &A);
 

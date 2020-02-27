@@ -975,7 +975,7 @@ int main(int argc, char *argv[]) {
     double EMP2=0.0;
     //SpinOrbitalMP2 MyMP2Instance(&g, &C, nao, ndocc, &E_orb, &H_core_forMP2, &S_forMP2);
     //SpinFreeMP2 MySpinFreeMP2Instance(&g, &C, nao, ndocc, &E_orb, &H_core_forMP2, &S_forMP2);
-    OOSpinOrbitalMP2 MyOOMP2Instance(&g, C, nao, ndocc, &E_orb, &H_core_forMP2, &S_forMP2, enuc);
+    OMP2_SO MyOOMP2Instance(&g, C, nao, ndocc, &E_orb, &H_core_forMP2, &S_forMP2, enuc);
     //SpinOrbitalCCD MyCCDInstance(&g, C, nao, ndocc, &E_orb, &H_core_forMP2, &S_forMP2, enuc);
     //EMP2=RunMP2spinfreenoncanon(&g, &C, nao, ndocc, &E_orb, &H_core_forMP2, &S_forMP2);
     ////EMP2=RunMP2spinorbitalnoncanon(&g, &C, nao, ndocc, &E_orb, &H_core_forMP2, &S_forMP2);

@@ -20,7 +20,7 @@
 
 
 //Spinorbital OMP2 Class additions below
-OOSpinOrbitalMP2::OOSpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd SFCoeffs, const int nbfs, const int numocc, Eigen::VectorXd *Evals, Eigen::MatrixXd *H_core, const Eigen::MatrixXd *S, const double enuc): eriTensor(*eriTensor), SFCoeffs(SFCoeffs), nbfs(nbfs), numocc(numocc), Evals(*Evals), H_core(*H_core), S(*S), enuc(enuc) {
+OMP2_SO::OMP2_SO(const TensorRank4 *eriTensor, Eigen::MatrixXd SFCoeffs, const int nbfs, const int numocc, Eigen::VectorXd *Evals, Eigen::MatrixXd *H_core, const Eigen::MatrixXd *S, const double enuc): eriTensor(*eriTensor), SFCoeffs(SFCoeffs), nbfs(nbfs), numocc(numocc), Evals(*Evals), H_core(*H_core), S(*S), enuc(enuc) {
 
     double tol_E = 1e-12;
     double residconv = 1e-10;
@@ -35,10 +35,10 @@ OOSpinOrbitalMP2::OOSpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd
     
     const Eigen::MatrixXd canon_coeffs = Coeffs;
 
-    TensorRank4 eriTensorSO = OOSpinOrbitalMP2::construct_so_ao_electron_integral_tensor();//this should be untouched AO tensor.
-    Eigen::Tensor<double,4> standard_eri_tensor = OOSpinOrbitalMP2::experimental_copy_eriTensorSO_to_standard_tensor_format(eriTensorSO);
-    Eigen::MatrixXd H_core_SO = OOSpinOrbitalMP2::fock_build_so(H_core);
-    Eigen::MatrixXd one_electron_integrals = OOSpinOrbitalMP2::rotate_so_sized_matrix(&H_core_SO, &Coeffs);
+    TensorRank4 eriTensorSO = OMP2_SO::construct_so_ao_electron_integral_tensor();//this should be untouched AO tensor.
+    Eigen::Tensor<double,4> standard_eri_tensor = OMP2_SO::experimental_copy_eriTensorSO_to_standard_tensor_format(eriTensorSO);
+    Eigen::MatrixXd H_core_SO = OMP2_SO::fock_build_so(H_core);
+    Eigen::MatrixXd one_electron_integrals = OMP2_SO::rotate_so_sized_matrix(&H_core_SO, &Coeffs);
 
     Eigen::MatrixXd P = Eigen::MatrixXd::Zero(2*nbfs,2*nbfs);//density reconstructed from coefficients: needed to construct fock matrix which is in turn needed for non-canonical MP2
     for(int i = 0; i < 2*nbfs; i++) {//construct P matrix
@@ -50,10 +50,10 @@ OOSpinOrbitalMP2::OOSpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd
     }
 
     Eigen::MatrixXd F_SO = Eigen::MatrixXd::Zero(2*nbfs,2*nbfs);
-    F_SO = OOSpinOrbitalMP2::fock_build_sf(&P, &Coeffs);
+    F_SO = OMP2_SO::fock_build_sf(&P, &Coeffs);
     P.resize(0,0);
     TensorRank4 two_electron_integrals(2*nbfs,2*nbfs,2*nbfs,2*nbfs);
-    two_electron_integrals = OOSpinOrbitalMP2::basic_convert_ERI_tensor_AO_to_soMO(&Coeffs);//Here, how do I reconcile calculating doubles with the oo format of generating tensor?
+    two_electron_integrals = OMP2_SO::basic_convert_ERI_tensor_AO_to_soMO(&Coeffs);//Here, how do I reconcile calculating doubles with the oo format of generating tensor?
     double E_mp2_ee=0.0;
     int residcounterSO = 1;
 
@@ -89,13 +89,13 @@ OOSpinOrbitalMP2::OOSpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd
      while(residcounterSO > 0) {
         count_mp2++;
         residcounterSO = 0;
-        TensorRank4 residualSO = OOSpinOrbitalMP2::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &doublesSO, &F_SO);
-        doublesSO = OOSpinOrbitalMP2::update_doubles_so(&doublesSO, &residualSO, &F_SO);
-        Eigen::MatrixXd rdm1e_hf = OOSpinOrbitalMP2::build_one_particle_density_hf();
-        Eigen::MatrixXd rdm1e_mp2 = OOSpinOrbitalMP2::build_one_particle_density_mp2(&doublesSO);
-        Eigen::MatrixXd one_particle_density = OOSpinOrbitalMP2::build_total_one_particle_density(rdm1e_hf, rdm1e_mp2);
-        TensorRank4 two_particle_density = OOSpinOrbitalMP2::build_two_particle_density(&doublesSO, rdm1e_hf, rdm1e_mp2);
-        E_mp2 = OOSpinOrbitalMP2::calculate_E_oomp2(&one_particle_density, &two_particle_density, &one_electron_integrals, &two_electron_integrals);
+        TensorRank4 residualSO = OMP2_SO::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &doublesSO, &F_SO);
+        doublesSO = OMP2_SO::update_doubles_so(&doublesSO, &residualSO, &F_SO);
+        Eigen::MatrixXd rdm1e_hf = OMP2_SO::build_one_particle_density_hf();
+        Eigen::MatrixXd rdm1e_mp2 = OMP2_SO::build_one_particle_density_mp2(&doublesSO);
+        Eigen::MatrixXd one_particle_density = OMP2_SO::build_total_one_particle_density(rdm1e_hf, rdm1e_mp2);
+        TensorRank4 two_particle_density = OMP2_SO::build_two_particle_density(&doublesSO, rdm1e_hf, rdm1e_mp2);
+        E_mp2 = OMP2_SO::calculate_E_oomp2(&one_particle_density, &two_particle_density, &one_electron_integrals, &two_electron_integrals);
         E_mp2 += enuc;
         printf("%3i        %20.12f          %5i\n", count_mp2, E_mp2,residcounterSO);
      }
@@ -103,8 +103,8 @@ OOSpinOrbitalMP2::OOSpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd
 
     //Modifiable DIIS parameters
     //
-     bool use_DIIS=false;
-     double level_shift = 0.0; //How much to shift the denominator in the newton-raphson step. Can be helpful with tricky convergence cases. MHG recommends 0.4
+     bool use_DIIS=true;
+     double level_shift = 0.4; //How much to shift the denominator in the newton-raphson step. Can be helpful with tricky convergence cases. MHG recommends 0.4
 
      int DIIS_max_num_iters = 8;//Scuseria, Lee, Schaefer Chem Phys Lett 1896 recommend 8
      double DIIS_storage_threshhold = 1e-0;
@@ -182,15 +182,15 @@ OOSpinOrbitalMP2::OOSpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd
 
     if(earlybird) {
         TensorRank4 residualSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
-        residualSO = OOSpinOrbitalMP2::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &DIIS_doublesSO, &F_SO);
-        doublesSO = OOSpinOrbitalMP2::update_doubles_so(&DIIS_doublesSO, &residualSO, &F_SO);//step 5: update amplitudes
-        rdm1e_hf = OOSpinOrbitalMP2::build_one_particle_density_hf();//step 6: build one and two particle densities
-        rdm1e_mp2 = OOSpinOrbitalMP2::build_one_particle_density_mp2(&DIIS_doublesSO);//step 6
-        one_particle_density = OOSpinOrbitalMP2::build_total_one_particle_density(rdm1e_hf, rdm1e_mp2);//step 6
-        two_particle_density = OOSpinOrbitalMP2::build_two_particle_density(&DIIS_doublesSO, rdm1e_hf, rdm1e_mp2);//step 6
-        Gen_fock = OOSpinOrbitalMP2::construct_generalized_fock(&two_electron_integrals, &one_electron_integrals, &one_particle_density, &two_particle_density);//step 7:compute the Newton-Raphson step
-        orbital_gradient = OOSpinOrbitalMP2::compute_orbital_gradient(Gen_fock);//step 7
-        orbital_rotation_parameter = OOSpinOrbitalMP2::compute_orbital_rotation_parameter(orbital_gradient, F_SO, level_shift);//step 7
+        residualSO = OMP2_SO::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &DIIS_doublesSO, &F_SO);
+        doublesSO = OMP2_SO::update_doubles_so(&DIIS_doublesSO, &residualSO, &F_SO);//step 5: update amplitudes
+        rdm1e_hf = OMP2_SO::build_one_particle_density_hf();//step 6: build one and two particle densities
+        rdm1e_mp2 = OMP2_SO::build_one_particle_density_mp2(&DIIS_doublesSO);//step 6
+        one_particle_density = OMP2_SO::build_total_one_particle_density(rdm1e_hf, rdm1e_mp2);//step 6
+        two_particle_density = OMP2_SO::build_two_particle_density(&DIIS_doublesSO, rdm1e_hf, rdm1e_mp2);//step 6
+        Gen_fock = OMP2_SO::construct_generalized_fock(&two_electron_integrals, &one_electron_integrals, &one_particle_density, &two_particle_density);//step 7:compute the Newton-Raphson step
+        orbital_gradient = OMP2_SO::compute_orbital_gradient(Gen_fock);//step 7
+        orbital_rotation_parameter = OMP2_SO::compute_orbital_rotation_parameter(orbital_gradient, F_SO, level_shift);//step 7
         collective_orbital_rotation_parameters = DIIS_orbitalsSO + orbital_rotation_parameter;//step 7
         //printf("%3i        %20.12f            %i            Energy step:   %9.2e    earlybird\n", count, E_ccd, residcounterSO, diff_E);
     }
@@ -220,23 +220,23 @@ OOSpinOrbitalMP2::OOSpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd
 
         //if(DIIS_time && MK_DIIS_time){
          //    TensorRank4 residualSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
-         //    residualSO = OOSpinOrbitalMP2::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &DIIS_doublesSO, &F_SO);
-         //    doublesSO = OOSpinOrbitalMP2::update_doubles_so(&DIIS_doublesSO, &residualSO, &F_SO);//step 5: update amplitudes
-         //    Eigen::MatrixXd rdm1e_hf = OOSpinOrbitalMP2::build_one_particle_density_hf();//step 6: build one and two particle densities
-         //    Eigen::MatrixXd rdm1e_mp2 = OOSpinOrbitalMP2::build_one_particle_density_mp2(&DIIS_doublesSO);//step 6
-         //    Eigen::MatrixXd one_particle_density = OOSpinOrbitalMP2::build_total_one_particle_density(rdm1e_hf, rdm1e_mp2);//step 6
-         //    TensorRank4 two_particle_density = OOSpinOrbitalMP2::build_two_particle_density(&DIIS_doublesSO, rdm1e_hf, rdm1e_mp2);//step 6
-         //    Gen_fock = OOSpinOrbitalMP2::construct_generalized_fock(&two_electron_integrals, &one_electron_integrals, &one_particle_density, &two_particle_density);//step 7:compute the Newton-Raphson step
-         //    orbital_gradient = OOSpinOrbitalMP2::compute_orbital_gradient(Gen_fock);//step 7
-         //    Eigen::MatrixXd orbital_rotation_parameter = OOSpinOrbitalMP2::compute_orbital_rotation_parameter(orbital_gradient, F_SO, level_shift);//step 7
+         //    residualSO = OMP2_SO::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &DIIS_doublesSO, &F_SO);
+         //    doublesSO = OMP2_SO::update_doubles_so(&DIIS_doublesSO, &residualSO, &F_SO);//step 5: update amplitudes
+         //    Eigen::MatrixXd rdm1e_hf = OMP2_SO::build_one_particle_density_hf();//step 6: build one and two particle densities
+         //    Eigen::MatrixXd rdm1e_mp2 = OMP2_SO::build_one_particle_density_mp2(&DIIS_doublesSO);//step 6
+         //    Eigen::MatrixXd one_particle_density = OMP2_SO::build_total_one_particle_density(rdm1e_hf, rdm1e_mp2);//step 6
+         //    TensorRank4 two_particle_density = OMP2_SO::build_two_particle_density(&DIIS_doublesSO, rdm1e_hf, rdm1e_mp2);//step 6
+         //    Gen_fock = OMP2_SO::construct_generalized_fock(&two_electron_integrals, &one_electron_integrals, &one_particle_density, &two_particle_density);//step 7:compute the Newton-Raphson step
+         //    orbital_gradient = OMP2_SO::compute_orbital_gradient(Gen_fock);//step 7
+         //    Eigen::MatrixXd orbital_rotation_parameter = OMP2_SO::compute_orbital_rotation_parameter(orbital_gradient, F_SO, level_shift);//step 7
          //    collective_orbital_rotation_parameters = DIIS_orbitalsSO + orbital_rotation_parameter;//step 7
-         //    Eigen::MatrixXd orbital_rotation_matrix = OOSpinOrbitalMP2::diis_newton_raphson_step(collective_orbital_rotation_parameters);//step 8: build the Newton-Raphson orbital rotation matrix
-         //    //Eigen::MatrixXd orbital_rotation_matrix = OOSpinOrbitalMP2::compute_newton_raphson_step(&Gen_fock, &F_SO, level_shift);
-         //    Coeffs = OOSpinOrbitalMP2::rotate_spin_orbital_coefficients(canon_coeffs, &orbital_rotation_matrix);//step 9: rotate the spin-orbital coefficients
-         //    one_electron_integrals = OOSpinOrbitalMP2::rotate_one_electron_integrals(&Coeffs, &H_core_SO);//step 10: transform the one- and two-electron integrals from the ao basis to the new spin-orbital basis.
-         //    two_electron_integrals = OOSpinOrbitalMP2::rotate_two_electron_integrals_experimental(Coeffs, standard_eri_tensor);//step 10
-         //    //two_electron_integrals = OOSpinOrbitalMP2::rotate_two_electron_integrals(Coeffs, eriTensorSO);
-         //    E_omp2 = OOSpinOrbitalMP2::calculate_E_oomp2(&one_particle_density, &two_particle_density, &one_electron_integrals, &two_electron_integrals);//step 11: evaluate the energy
+         //    Eigen::MatrixXd orbital_rotation_matrix = OMP2_SO::diis_newton_raphson_step(collective_orbital_rotation_parameters);//step 8: build the Newton-Raphson orbital rotation matrix
+         //    //Eigen::MatrixXd orbital_rotation_matrix = OMP2_SO::compute_newton_raphson_step(&Gen_fock, &F_SO, level_shift);
+         //    Coeffs = OMP2_SO::rotate_spin_orbital_coefficients(canon_coeffs, &orbital_rotation_matrix);//step 9: rotate the spin-orbital coefficients
+         //    one_electron_integrals = OMP2_SO::rotate_one_electron_integrals(&Coeffs, &H_core_SO);//step 10: transform the one- and two-electron integrals from the ao basis to the new spin-orbital basis.
+         //    two_electron_integrals = OMP2_SO::rotate_two_electron_integrals_experimental(Coeffs, standard_eri_tensor);//step 10
+         //    //two_electron_integrals = OMP2_SO::rotate_two_electron_integrals(Coeffs, eriTensorSO);
+         //    E_omp2 = OMP2_SO::calculate_E_oomp2(&one_particle_density, &two_particle_density, &one_electron_integrals, &two_electron_integrals);//step 11: evaluate the energy
          //    E_omp2 += enuc;
          //    diff_E = E_omp2 - old_E;
          //    old_E = E_omp2;
@@ -256,23 +256,23 @@ OOSpinOrbitalMP2::OOSpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd
          //}
          //else {
          //    TensorRank4 residualSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
-         //    residualSO = OOSpinOrbitalMP2::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &doublesSO, &F_SO);
-         //    doublesSO = OOSpinOrbitalMP2::update_doubles_so(&doublesSO, &residualSO, &F_SO);
-         //    Eigen::MatrixXd rdm1e_hf = OOSpinOrbitalMP2::build_one_particle_density_hf();
-         //    Eigen::MatrixXd rdm1e_mp2 = OOSpinOrbitalMP2::build_one_particle_density_mp2(&doublesSO);
-         //    Eigen::MatrixXd one_particle_density = OOSpinOrbitalMP2::build_total_one_particle_density(rdm1e_hf, rdm1e_mp2);
-         //    TensorRank4 two_particle_density = OOSpinOrbitalMP2::build_two_particle_density(&doublesSO, rdm1e_hf, rdm1e_mp2);
-         //    Gen_fock = OOSpinOrbitalMP2::construct_generalized_fock(&two_electron_integrals, &one_electron_integrals, &one_particle_density, &two_particle_density);
-         //    orbital_gradient = OOSpinOrbitalMP2::compute_orbital_gradient(Gen_fock);
-         //    Eigen::MatrixXd orbital_rotation_parameter = OOSpinOrbitalMP2::compute_orbital_rotation_parameter(orbital_gradient, F_SO, level_shift);
+         //    residualSO = OMP2_SO::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &doublesSO, &F_SO);
+         //    doublesSO = OMP2_SO::update_doubles_so(&doublesSO, &residualSO, &F_SO);
+         //    Eigen::MatrixXd rdm1e_hf = OMP2_SO::build_one_particle_density_hf();
+         //    Eigen::MatrixXd rdm1e_mp2 = OMP2_SO::build_one_particle_density_mp2(&doublesSO);
+         //    Eigen::MatrixXd one_particle_density = OMP2_SO::build_total_one_particle_density(rdm1e_hf, rdm1e_mp2);
+         //    TensorRank4 two_particle_density = OMP2_SO::build_two_particle_density(&doublesSO, rdm1e_hf, rdm1e_mp2);
+         //    Gen_fock = OMP2_SO::construct_generalized_fock(&two_electron_integrals, &one_electron_integrals, &one_particle_density, &two_particle_density);
+         //    orbital_gradient = OMP2_SO::compute_orbital_gradient(Gen_fock);
+         //    Eigen::MatrixXd orbital_rotation_parameter = OMP2_SO::compute_orbital_rotation_parameter(orbital_gradient, F_SO, level_shift);
          //    collective_orbital_rotation_parameters = collective_orbital_rotation_parameters + orbital_rotation_parameter;
-         //    //Eigen::MatrixXd orbital_rotation_matrix = OOSpinOrbitalMP2::compute_newton_raphson_step(&Gen_fock, &F_SO, level_shift);
-         //    Eigen::MatrixXd orbital_rotation_matrix = OOSpinOrbitalMP2::diis_newton_raphson_step(collective_orbital_rotation_parameters);
-         //    Coeffs = OOSpinOrbitalMP2::rotate_spin_orbital_coefficients(canon_coeffs, &orbital_rotation_matrix);
-         //    one_electron_integrals = OOSpinOrbitalMP2::rotate_one_electron_integrals(&Coeffs, &H_core_SO);//CHECK IF CORRECT H_core!
-         //    two_electron_integrals = OOSpinOrbitalMP2::rotate_two_electron_integrals_experimental(Coeffs, standard_eri_tensor);//CHECK IF CORRECT ERITENSOR!
-         //    //two_electron_integrals = OOSpinOrbitalMP2::rotate_two_electron_integrals(Coeffs, eriTensorSO);//CHECK IF CORRECT ERITENSOR!
-         //    E_omp2 = OOSpinOrbitalMP2::calculate_E_oomp2(&one_particle_density, &two_particle_density, &one_electron_integrals, &two_electron_integrals);
+         //    //Eigen::MatrixXd orbital_rotation_matrix = OMP2_SO::compute_newton_raphson_step(&Gen_fock, &F_SO, level_shift);
+         //    Eigen::MatrixXd orbital_rotation_matrix = OMP2_SO::diis_newton_raphson_step(collective_orbital_rotation_parameters);
+         //    Coeffs = OMP2_SO::rotate_spin_orbital_coefficients(canon_coeffs, &orbital_rotation_matrix);
+         //    one_electron_integrals = OMP2_SO::rotate_one_electron_integrals(&Coeffs, &H_core_SO);//CHECK IF CORRECT H_core!
+         //    two_electron_integrals = OMP2_SO::rotate_two_electron_integrals_experimental(Coeffs, standard_eri_tensor);//CHECK IF CORRECT ERITENSOR!
+         //    //two_electron_integrals = OMP2_SO::rotate_two_electron_integrals(Coeffs, eriTensorSO);//CHECK IF CORRECT ERITENSOR!
+         //    E_omp2 = OMP2_SO::calculate_E_oomp2(&one_particle_density, &two_particle_density, &one_electron_integrals, &two_electron_integrals);
          //    E_omp2 += enuc;
          //    diff_E = E_omp2 - old_E;
          //    old_E = E_omp2;
@@ -288,12 +288,12 @@ OOSpinOrbitalMP2::OOSpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd
         //}
 
         if(DIIS_time && MK_DIIS_time){
-            Eigen::MatrixXd orbital_rotation_matrix = OOSpinOrbitalMP2::diis_newton_raphson_step(DIIS_orbitalsSO);//step 8: build the Newton-Raphson orbital rotation matrix
-            Coeffs = OOSpinOrbitalMP2::rotate_spin_orbital_coefficients(canon_coeffs, &orbital_rotation_matrix);//step 9: rotate the spin-orbital coefficients
-            one_electron_integrals = OOSpinOrbitalMP2::rotate_one_electron_integrals(&Coeffs, &H_core_SO);//step 10: transform the one- and two-electron integrals from the ao basis to the new spin-orbital basis.
-            two_electron_integrals = OOSpinOrbitalMP2::rotate_two_electron_integrals_experimental(Coeffs, standard_eri_tensor);//step 10
+            Eigen::MatrixXd orbital_rotation_matrix = OMP2_SO::diis_newton_raphson_step(DIIS_orbitalsSO);//step 8: build the Newton-Raphson orbital rotation matrix
+            Coeffs = OMP2_SO::rotate_spin_orbital_coefficients(canon_coeffs, &orbital_rotation_matrix);//step 9: rotate the spin-orbital coefficients
+            one_electron_integrals = OMP2_SO::rotate_one_electron_integrals(&Coeffs, &H_core_SO);//step 10: transform the one- and two-electron integrals from the ao basis to the new spin-orbital basis.
+            two_electron_integrals = OMP2_SO::rotate_two_electron_integrals_experimental(Coeffs, standard_eri_tensor);//step 10
             // vibe check
-             E_omp2 = OOSpinOrbitalMP2::calculate_E_oomp2(&one_particle_density, &two_particle_density, &one_electron_integrals, &two_electron_integrals);//step 11: evaluate the energy
+             E_omp2 = OMP2_SO::calculate_E_oomp2(&one_particle_density, &two_particle_density, &one_electron_integrals, &two_electron_integrals);//step 11: evaluate the energy
              E_omp2 += enuc;
              diff_E = E_omp2 - old_E;
              old_E = E_omp2;
@@ -308,24 +308,24 @@ OOSpinOrbitalMP2::OOSpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd
              }
             //
             TensorRank4 residualSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
-            residualSO = OOSpinOrbitalMP2::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &DIIS_doublesSO, &F_SO);
-            doublesSO = OOSpinOrbitalMP2::update_doubles_so(&DIIS_doublesSO, &residualSO, &F_SO);//step 5: update amplitudes
-            rdm1e_hf = OOSpinOrbitalMP2::build_one_particle_density_hf();//step 6: build one and two particle densities
-            rdm1e_mp2 = OOSpinOrbitalMP2::build_one_particle_density_mp2(&DIIS_doublesSO);//step 6
-            one_particle_density = OOSpinOrbitalMP2::build_total_one_particle_density(rdm1e_hf, rdm1e_mp2);//step 6
-            two_particle_density = OOSpinOrbitalMP2::build_two_particle_density(&DIIS_doublesSO, rdm1e_hf, rdm1e_mp2);//step 6
-            Gen_fock = OOSpinOrbitalMP2::construct_generalized_fock(&two_electron_integrals, &one_electron_integrals, &one_particle_density, &two_particle_density);//step 7:compute the Newton-Raphson step
-            orbital_gradient = OOSpinOrbitalMP2::compute_orbital_gradient(Gen_fock);//step 7
-            Eigen::MatrixXd orbital_rotation_parameter = OOSpinOrbitalMP2::compute_orbital_rotation_parameter(orbital_gradient, F_SO, level_shift);//step 7
+            residualSO = OMP2_SO::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &DIIS_doublesSO, &F_SO);
+            doublesSO = OMP2_SO::update_doubles_so(&DIIS_doublesSO, &residualSO, &F_SO);//step 5: update amplitudes
+            rdm1e_hf = OMP2_SO::build_one_particle_density_hf();//step 6: build one and two particle densities
+            rdm1e_mp2 = OMP2_SO::build_one_particle_density_mp2(&DIIS_doublesSO);//step 6
+            one_particle_density = OMP2_SO::build_total_one_particle_density(rdm1e_hf, rdm1e_mp2);//step 6
+            two_particle_density = OMP2_SO::build_two_particle_density(&DIIS_doublesSO, rdm1e_hf, rdm1e_mp2);//step 6
+            Gen_fock = OMP2_SO::construct_generalized_fock(&two_electron_integrals, &one_electron_integrals, &one_particle_density, &two_particle_density);//step 7:compute the Newton-Raphson step
+            orbital_gradient = OMP2_SO::compute_orbital_gradient(Gen_fock);//step 7
+            Eigen::MatrixXd orbital_rotation_parameter = OMP2_SO::compute_orbital_rotation_parameter(orbital_gradient, F_SO, level_shift);//step 7
             collective_orbital_rotation_parameters = DIIS_orbitalsSO + orbital_rotation_parameter;//step 7
         }
         else {
-            Eigen::MatrixXd orbital_rotation_matrix = OOSpinOrbitalMP2::diis_newton_raphson_step(collective_orbital_rotation_parameters);
-            Coeffs = OOSpinOrbitalMP2::rotate_spin_orbital_coefficients(canon_coeffs, &orbital_rotation_matrix);
-            one_electron_integrals = OOSpinOrbitalMP2::rotate_one_electron_integrals(&Coeffs, &H_core_SO);//CHECK IF CORRECT H_core!
-            two_electron_integrals = OOSpinOrbitalMP2::rotate_two_electron_integrals_experimental(Coeffs, standard_eri_tensor);//CHECK IF CORRECT ERITENSOR!
+            Eigen::MatrixXd orbital_rotation_matrix = OMP2_SO::diis_newton_raphson_step(collective_orbital_rotation_parameters);
+            Coeffs = OMP2_SO::rotate_spin_orbital_coefficients(canon_coeffs, &orbital_rotation_matrix);
+            one_electron_integrals = OMP2_SO::rotate_one_electron_integrals(&Coeffs, &H_core_SO);//CHECK IF CORRECT H_core!
+            two_electron_integrals = OMP2_SO::rotate_two_electron_integrals_experimental(Coeffs, standard_eri_tensor);//CHECK IF CORRECT ERITENSOR!
             //vibe check
-             E_omp2 = OOSpinOrbitalMP2::calculate_E_oomp2(&one_particle_density, &two_particle_density, &one_electron_integrals, &two_electron_integrals);
+             E_omp2 = OMP2_SO::calculate_E_oomp2(&one_particle_density, &two_particle_density, &one_electron_integrals, &two_electron_integrals);
              E_omp2 += enuc;
              diff_E = E_omp2 - old_E;
              old_E = E_omp2;
@@ -340,15 +340,15 @@ OOSpinOrbitalMP2::OOSpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd
              }
             //
             TensorRank4 residualSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
-            residualSO = OOSpinOrbitalMP2::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &doublesSO, &F_SO);
-            doublesSO = OOSpinOrbitalMP2::update_doubles_so(&doublesSO, &residualSO, &F_SO);
-            rdm1e_hf = OOSpinOrbitalMP2::build_one_particle_density_hf();
-            rdm1e_mp2 = OOSpinOrbitalMP2::build_one_particle_density_mp2(&doublesSO);
-            one_particle_density = OOSpinOrbitalMP2::build_total_one_particle_density(rdm1e_hf, rdm1e_mp2);
-            two_particle_density = OOSpinOrbitalMP2::build_two_particle_density(&doublesSO, rdm1e_hf, rdm1e_mp2);
-            Gen_fock = OOSpinOrbitalMP2::construct_generalized_fock(&two_electron_integrals, &one_electron_integrals, &one_particle_density, &two_particle_density);
-            orbital_gradient = OOSpinOrbitalMP2::compute_orbital_gradient(Gen_fock);
-            Eigen::MatrixXd orbital_rotation_parameter = OOSpinOrbitalMP2::compute_orbital_rotation_parameter(orbital_gradient, F_SO, level_shift);
+            residualSO = OMP2_SO::calculate_residuals_so(&residcounterSO, residconv, &two_electron_integrals, &doublesSO, &F_SO);
+            doublesSO = OMP2_SO::update_doubles_so(&doublesSO, &residualSO, &F_SO);
+            rdm1e_hf = OMP2_SO::build_one_particle_density_hf();
+            rdm1e_mp2 = OMP2_SO::build_one_particle_density_mp2(&doublesSO);
+            one_particle_density = OMP2_SO::build_total_one_particle_density(rdm1e_hf, rdm1e_mp2);
+            two_particle_density = OMP2_SO::build_two_particle_density(&doublesSO, rdm1e_hf, rdm1e_mp2);
+            Gen_fock = OMP2_SO::construct_generalized_fock(&two_electron_integrals, &one_electron_integrals, &one_particle_density, &two_particle_density);
+            orbital_gradient = OMP2_SO::compute_orbital_gradient(Gen_fock);
+            Eigen::MatrixXd orbital_rotation_parameter = OMP2_SO::compute_orbital_rotation_parameter(orbital_gradient, F_SO, level_shift);
             collective_orbital_rotation_parameters = collective_orbital_rotation_parameters + orbital_rotation_parameter;
             
         }
@@ -394,7 +394,7 @@ OOSpinOrbitalMP2::OOSpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd
             if(DIIS_time && --until_next_DIIS_restart <=0) {DIIS_restart_given_time_to_be_used = true;}
 
             if(enforce_well_behaved_DIIS && effective_DIIS_num_iters == DIIS_max_num_iters && DIIS_restart_given_time_to_be_used){//make sure some DIIS gets done. also paves way for later, more advanced resets.
-                double condition_number = OOSpinOrbitalMP2::compute_condition_number(effective_DIIS_num_iters, DIIS_error_matrix);
+                double condition_number = OMP2_SO::compute_condition_number(effective_DIIS_num_iters, DIIS_error_matrix);
                 if(print_diis_results) {std::cout << "condition number: " << condition_number << std::endl;}
                 if(condition_number == -1.0) {
                     if(CN_handling == "shutoff"){//when error matrix becomes ill-conditioned, shut off DIIS forever (with masterkey == MK).This approach should be used if the others have no speed-up
@@ -538,7 +538,7 @@ OOSpinOrbitalMP2::OOSpinOrbitalMP2(const TensorRank4 *eriTensor, Eigen::MatrixXd
     }
 };
 
-double OOSpinOrbitalMP2::compute_condition_number(const int dim1, const Eigen::MatrixXd &A){
+double OMP2_SO::compute_condition_number(const int dim1, const Eigen::MatrixXd &A){
     Eigen::FullPivLU<Eigen::MatrixXd> lu(A);
     if(lu.isInvertible()) {//do invertibility check
         Eigen::MatrixXd Ainv = lu.inverse();
@@ -565,7 +565,7 @@ double OOSpinOrbitalMP2::compute_condition_number(const int dim1, const Eigen::M
 
 }
 
-Eigen::MatrixXd OOSpinOrbitalMP2::fock_build_sf(const Eigen::MatrixXd *P, const Eigen::MatrixXd *Coeffs) {//rename to fock_spinorbitalbuildforMP2
+Eigen::MatrixXd OMP2_SO::fock_build_sf(const Eigen::MatrixXd *P, const Eigen::MatrixXd *Coeffs) {//rename to fock_spinorbitalbuildforMP2
     Eigen::MatrixXd F_ao(nbfs, nbfs);
     for (int mu = 0; mu < nbfs; mu++) {
         for (int nu = 0; nu < nbfs; nu++) {
@@ -600,7 +600,7 @@ Eigen::MatrixXd OOSpinOrbitalMP2::fock_build_sf(const Eigen::MatrixXd *P, const 
     return F_mo;
 }
 
-Eigen::MatrixXd OOSpinOrbitalMP2::rotate_so_sized_matrix(const Eigen::MatrixXd *matrix_to_rotate, const Eigen::MatrixXd *coefficients){
+Eigen::MatrixXd OMP2_SO::rotate_so_sized_matrix(const Eigen::MatrixXd *matrix_to_rotate, const Eigen::MatrixXd *coefficients){
     Eigen::MatrixXd rotated_matrix = Eigen::MatrixXd::Zero(2*nbfs,2*nbfs);
     for (int i = 0; i < 2*nbfs; i++) {
         for(int j = 0; j < 2*nbfs; j++) {
@@ -614,7 +614,7 @@ Eigen::MatrixXd OOSpinOrbitalMP2::rotate_so_sized_matrix(const Eigen::MatrixXd *
     return rotated_matrix;
 }
 
-Eigen::MatrixXd OOSpinOrbitalMP2::fock_build_so(const Eigen::MatrixXd *F_mo) {
+Eigen::MatrixXd OMP2_SO::fock_build_so(const Eigen::MatrixXd *F_mo) {
     Eigen::MatrixXd FockSO = Eigen::MatrixXd::Zero(2*nbfs, 2*nbfs);
     for(int p = 0; p < 2*nbfs; p+=2) {
         for(int q = 0; q < 2*nbfs; q+=2) {
@@ -625,7 +625,7 @@ Eigen::MatrixXd OOSpinOrbitalMP2::fock_build_so(const Eigen::MatrixXd *F_mo) {
     return FockSO;
 }
 
-TensorRank4 OOSpinOrbitalMP2::basic_convert_ERI_tensor_AO_to_soMO(const Eigen::MatrixXd *Coeffs) {//cut this in half, [p/2 will never give decimal, so I don't need different indices for the two tensor sizes]
+TensorRank4 OMP2_SO::basic_convert_ERI_tensor_AO_to_soMO(const Eigen::MatrixXd *Coeffs) {//cut this in half, [p/2 will never give decimal, so I don't need different indices for the two tensor sizes]
     TensorRank4 eriTensorSObasis(2*nbfs, 2*nbfs, 2*nbfs, 2*nbfs);
     eriTensorSObasis.setZero();
     for(int p = 0; p < 2*nbfs; p+=2) {
@@ -701,7 +701,7 @@ TensorRank4 OOSpinOrbitalMP2::basic_convert_ERI_tensor_AO_to_soMO(const Eigen::M
     return MP2TensorSO;
 }
 
-TensorRank4 OOSpinOrbitalMP2::basic_convert_ERI_tensor_sfMO_to_soMO(const TensorRank4 *MP2Tensor) {//I could speed this up by setting to 0 rather than populating with 0.0
+TensorRank4 OMP2_SO::basic_convert_ERI_tensor_sfMO_to_soMO(const TensorRank4 *MP2Tensor) {//I could speed this up by setting to 0 rather than populating with 0.0
     TensorRank4 MP2TensorSO(2*nbfs, 2*nbfs, 2*nbfs, 2*nbfs);
     MP2TensorSO.setZero();
     for(int p = 0; p < 2*nbfs; p+=2) {
@@ -719,7 +719,7 @@ TensorRank4 OOSpinOrbitalMP2::basic_convert_ERI_tensor_sfMO_to_soMO(const Tensor
     return MP2TensorSO;
 }
 
-TensorRank4 OOSpinOrbitalMP2::calculate_residuals_so(int *residcounter, const double residconv, const TensorRank4 *two_electron_integral, const TensorRank4 *doubles, const Eigen::MatrixXd *F) {
+TensorRank4 OMP2_SO::calculate_residuals_so(int *residcounter, const double residconv, const TensorRank4 *two_electron_integral, const TensorRank4 *doubles, const Eigen::MatrixXd *F) {
     TensorRank4 residual(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
     residual.setZero();
     *residcounter=0;
@@ -744,7 +744,7 @@ TensorRank4 OOSpinOrbitalMP2::calculate_residuals_so(int *residcounter, const do
     return residual;
 }
 
-TensorRank4 OOSpinOrbitalMP2::update_doubles_so(TensorRank4 *doubles, const TensorRank4 *residual, const Eigen::MatrixXd *F){
+TensorRank4 OMP2_SO::update_doubles_so(TensorRank4 *doubles, const TensorRank4 *residual, const Eigen::MatrixXd *F){
     for(int i = 0; i < 2*numocc; i++) {
         for(int j = 0; j < 2*numocc; j++) {
             for(int a = 0; a < 2*nbfs-2*numocc; a++) {
@@ -757,7 +757,7 @@ TensorRank4 OOSpinOrbitalMP2::update_doubles_so(TensorRank4 *doubles, const Tens
     return *doubles;
 }
 
-Eigen::MatrixXd OOSpinOrbitalMP2::construct_generalized_fock(const TensorRank4 *eriTensorSO, const Eigen::MatrixXd *H_core_SO, const Eigen::MatrixXd *one_particle_density, const TensorRank4 *two_particle_density){
+Eigen::MatrixXd OMP2_SO::construct_generalized_fock(const TensorRank4 *eriTensorSO, const Eigen::MatrixXd *H_core_SO, const Eigen::MatrixXd *one_particle_density, const TensorRank4 *two_particle_density){
     Eigen::MatrixXd gen_fock = Eigen::MatrixXd::Zero(2*nbfs,2*nbfs);
     for (int p = 0; p < 2*nbfs; p++){
         for(int q = 0; q < 2*nbfs; q++){
@@ -777,7 +777,7 @@ Eigen::MatrixXd OOSpinOrbitalMP2::construct_generalized_fock(const TensorRank4 *
     return gen_fock;
 }
 
-Eigen::MatrixXd OOSpinOrbitalMP2::build_one_particle_density_hf(){
+Eigen::MatrixXd OMP2_SO::build_one_particle_density_hf(){
     Eigen::MatrixXd rdm1e_hf = Eigen::MatrixXd::Zero(2*nbfs,2*nbfs);
     for (int i = 0; i < 2*numocc; i++) {
         rdm1e_hf(i,i) += 1.0;
@@ -785,7 +785,7 @@ Eigen::MatrixXd OOSpinOrbitalMP2::build_one_particle_density_hf(){
     return rdm1e_hf;
 }
 
-Eigen::MatrixXd OOSpinOrbitalMP2::build_one_particle_density_mp2(TensorRank4 *doubles){
+Eigen::MatrixXd OMP2_SO::build_one_particle_density_mp2(TensorRank4 *doubles){
     Eigen::MatrixXd one_particle_density_mp2 = Eigen::MatrixXd::Zero(2*nbfs,2*nbfs);
     for (int i = 0; i < 2*numocc; i++) {
         for (int j = 0; j < 2*numocc; j++) {
@@ -810,14 +810,14 @@ Eigen::MatrixXd OOSpinOrbitalMP2::build_one_particle_density_mp2(TensorRank4 *do
     return one_particle_density_mp2;
 }
 
-Eigen::MatrixXd OOSpinOrbitalMP2::build_total_one_particle_density(const Eigen::MatrixXd &rdm1e_hf, const Eigen::MatrixXd &rdm1e_mp2){
+Eigen::MatrixXd OMP2_SO::build_total_one_particle_density(const Eigen::MatrixXd &rdm1e_hf, const Eigen::MatrixXd &rdm1e_mp2){
     Eigen::MatrixXd one_particle_density = rdm1e_hf + rdm1e_mp2;
     
     return one_particle_density;
 }
 
 
-TensorRank4 OOSpinOrbitalMP2::build_two_particle_density(TensorRank4 *doubles, const Eigen::MatrixXd &rdm1e_hf, const Eigen::MatrixXd &rdm1e_mp2){
+TensorRank4 OMP2_SO::build_two_particle_density(TensorRank4 *doubles, const Eigen::MatrixXd &rdm1e_hf, const Eigen::MatrixXd &rdm1e_mp2){
     TensorRank4 two_particle_density(2*nbfs, 2*nbfs, 2*nbfs, 2*nbfs);
     two_particle_density.setZero();
     for (int i = 0; i < 2*numocc; i++) {
@@ -866,7 +866,7 @@ TensorRank4 OOSpinOrbitalMP2::build_two_particle_density(TensorRank4 *doubles, c
     return two_particle_density;
 }
 
-Eigen::MatrixXd OOSpinOrbitalMP2::compute_orbital_gradient(const Eigen::MatrixXd &generalized_fock){
+Eigen::MatrixXd OMP2_SO::compute_orbital_gradient(const Eigen::MatrixXd &generalized_fock){
     //calculate the orbital gradient, w. It's the numerator in kappa or x_vo in our lingo. in turn, the exponentiated skew of kappa, e^(kappa - kappa*), is the orbital rotation matrix.
     Eigen::MatrixXd w = Eigen::MatrixXd::Zero(2*nbfs, 2*nbfs);
     for ( int i = 0; i < 2*numocc; i++) {
@@ -877,7 +877,7 @@ Eigen::MatrixXd OOSpinOrbitalMP2::compute_orbital_gradient(const Eigen::MatrixXd
     return w;
 }
 
-Eigen::MatrixXd OOSpinOrbitalMP2::compute_orbital_rotation_parameter(const Eigen::MatrixXd &w, const Eigen::MatrixXd &fso, double level_shift){//DO LEVEL SHIFTING???
+Eigen::MatrixXd OMP2_SO::compute_orbital_rotation_parameter(const Eigen::MatrixXd &w, const Eigen::MatrixXd &fso, double level_shift){//DO LEVEL SHIFTING???
     //calculate the orbital gradient, w. It's the numerator in kappa or x_vo in our lingo. in turn, the exponentiated skew of kappa, e^(kappa - kappa*), is the orbital rotation matrix.
     Eigen::MatrixXd x_vo = Eigen::MatrixXd::Zero(2*nbfs, 2*nbfs);
     for ( int i = 0; i < 2*numocc; i++) {
@@ -888,14 +888,14 @@ Eigen::MatrixXd OOSpinOrbitalMP2::compute_orbital_rotation_parameter(const Eigen
     return x_vo;
 }
 
-Eigen::MatrixXd OOSpinOrbitalMP2::diis_newton_raphson_step(const Eigen::MatrixXd &collective_rotation){
+Eigen::MatrixXd OMP2_SO::diis_newton_raphson_step(const Eigen::MatrixXd &collective_rotation){
     Eigen::MatrixXd orbital_rotation_matrix_exponent = collective_rotation - collective_rotation.adjoint();//this is uppercase kappa bar in 2013 Bozkaya OOCEPA (eqn 49)
     Eigen::MatrixXd orbital_rotation_matrix = orbital_rotation_matrix_exponent.exp();//build orbital rotation matrix. eqn 50 in 2013 Bozkaya OOCEPA
     return orbital_rotation_matrix;
 }
 
 //Compute the Newton-Raphson orbital rotation matrix
-Eigen::MatrixXd OOSpinOrbitalMP2::compute_newton_raphson_step(const Eigen::MatrixXd *generalized_fock, const Eigen::MatrixXd *fso, double level_shift){
+Eigen::MatrixXd OMP2_SO::compute_newton_raphson_step(const Eigen::MatrixXd *generalized_fock, const Eigen::MatrixXd *fso, double level_shift){
     //Eigen::MatrixXd step7_f(); // This is just the fock matrix in second quantization, and I can just pass to this function (or class if it ends up being inside one) the build_fock subroutine.
     Eigen::MatrixXd x_vo = Eigen::MatrixXd::Zero(2*nbfs, 2*nbfs);//calculate newton-raphson step
     for ( int i = 0; i < 2*numocc; i++) {
@@ -908,7 +908,7 @@ Eigen::MatrixXd OOSpinOrbitalMP2::compute_newton_raphson_step(const Eigen::Matri
     return orbital_rotation_matrix;
 }
 
-Eigen::MatrixXd OOSpinOrbitalMP2::rotate_spin_orbital_coefficients(Eigen::MatrixXd coefficients, const Eigen::MatrixXd *orbital_rotation_matrix){
+Eigen::MatrixXd OMP2_SO::rotate_spin_orbital_coefficients(Eigen::MatrixXd coefficients, const Eigen::MatrixXd *orbital_rotation_matrix){
     Eigen::MatrixXd rotated_coeffs = Eigen::MatrixXd::Zero(2*nbfs, 2*nbfs);
     rotated_coeffs = coefficients * *orbital_rotation_matrix;
     return rotated_coeffs;
@@ -916,7 +916,7 @@ Eigen::MatrixXd OOSpinOrbitalMP2::rotate_spin_orbital_coefficients(Eigen::Matrix
 //Step 10: recreate the one- and two-electron integrals using the rotate coefficients. Use one function Eigen::MatrixXd and another function TensorRank4.
 //START WITH AO INTS AGAIN??
 
-Eigen::MatrixXd OOSpinOrbitalMP2::rotate_one_electron_integrals(const Eigen::MatrixXd *rotated_coefficients, const Eigen::MatrixXd *h_core_so_sized){
+Eigen::MatrixXd OMP2_SO::rotate_one_electron_integrals(const Eigen::MatrixXd *rotated_coefficients, const Eigen::MatrixXd *h_core_so_sized){
     Eigen::MatrixXd rotated_one_electron_integrals = Eigen::MatrixXd::Zero(2*nbfs, 2*nbfs);
     //auto T = compute_1body_ints(shells, Operator::kinetic);
     rotated_one_electron_integrals = (*rotated_coefficients).transpose() * *h_core_so_sized * *rotated_coefficients;//check this isn't an aliasing issue: transposing a reference
@@ -934,7 +934,7 @@ Eigen::MatrixXd OOSpinOrbitalMP2::rotate_one_electron_integrals(const Eigen::Mat
 //THEREFORE, I will convert the AO tensor to spin-orbital AO tensor once, then keep it in memory and rotate it into new tensors every iteration.
 //Those new tensors will go out of scope / be cleared, but the spin-orbital AO tensor will stay in memory, saving us the pain of reconstructing it with every iteration.
 //Hold on. It's faster to reconstruct large memory items than hold them in memory.
-TensorRank4 OOSpinOrbitalMP2::construct_so_ao_electron_integral_tensor(){
+TensorRank4 OMP2_SO::construct_so_ao_electron_integral_tensor(){
     TensorRank4 eriTensorSObasis(2*nbfs, 2*nbfs, 2*nbfs, 2*nbfs);
     //eriTensorSO.setZero(); // Use this later to not have to populate with zeros in the loops below.
 
@@ -953,7 +953,7 @@ TensorRank4 OOSpinOrbitalMP2::construct_so_ao_electron_integral_tensor(){
     return eriTensorSObasis;
 }
 
-TensorRank4 OOSpinOrbitalMP2::rotate_two_electron_integrals_experimental(const Eigen::MatrixXd &rotated_coefficients, const Eigen::Tensor<double, 4> &standard_eri_tensor){
+TensorRank4 OMP2_SO::rotate_two_electron_integrals_experimental(const Eigen::MatrixXd &rotated_coefficients, const Eigen::Tensor<double, 4> &standard_eri_tensor){
     Eigen::MatrixXd transposed_rotated_coefficients = rotated_coefficients.transpose();//need to transpose?
     Eigen::Tensor<double,4> std_eri_tensor = standard_eri_tensor;
     Eigen::Tensor<double,2> rotated_coefficients_tensor(2*nbfs,2*nbfs);
@@ -993,7 +993,7 @@ TensorRank4 OOSpinOrbitalMP2::rotate_two_electron_integrals_experimental(const E
     return rotated_two_electron_integrals;
 }
 
-Eigen::Tensor<double,4> OOSpinOrbitalMP2::experimental_copy_eriTensorSO_to_standard_tensor_format(const TensorRank4 &eriTensorSO){
+Eigen::Tensor<double,4> OMP2_SO::experimental_copy_eriTensorSO_to_standard_tensor_format(const TensorRank4 &eriTensorSO){
     Eigen::Tensor<double,4> standard_eri_tensor(2*nbfs,2*nbfs,2*nbfs,2*nbfs);
     for(int p = 0; p < 2*nbfs; p++) {
         for(int q = 0; q < 2*nbfs; q++) {
@@ -1007,7 +1007,7 @@ Eigen::Tensor<double,4> OOSpinOrbitalMP2::experimental_copy_eriTensorSO_to_stand
     return standard_eri_tensor;
 }
 
-TensorRank4 OOSpinOrbitalMP2::rotate_two_electron_integrals(const Eigen::MatrixXd &rotated_coefficients, const TensorRank4 &eriTensorSO){
+TensorRank4 OMP2_SO::rotate_two_electron_integrals(const Eigen::MatrixXd &rotated_coefficients, const TensorRank4 &eriTensorSO){
     //rotated_two_electron_integrals += (*rotated_coefficients).transpose() * (*rotated_coefficients).transpose() * (*eriTensorSO).operator() *rotated_coefficients * *rotated_coefficients;
     TensorRank4 tensor_step_mu(2*nbfs, 2*nbfs, 2*nbfs, 2*nbfs);
     tensor_step_mu.setZero();
@@ -1066,7 +1066,7 @@ TensorRank4 OOSpinOrbitalMP2::rotate_two_electron_integrals(const Eigen::MatrixX
     return rotated_two_electron_integrals;
 }
 
-double OOSpinOrbitalMP2::calculate_E_oomp2(const Eigen::MatrixXd *one_particle_density, const TensorRank4 *two_particle_density, const Eigen::MatrixXd *rotated_one_electron_integrals, const TensorRank4 *rotated_two_electron_integrals){
+double OMP2_SO::calculate_E_oomp2(const Eigen::MatrixXd *one_particle_density, const TensorRank4 *two_particle_density, const Eigen::MatrixXd *rotated_one_electron_integrals, const TensorRank4 *rotated_two_electron_integrals){
     double OOEMP2 = 0.0;
     for(int p = 0; p < 2*nbfs; p++) {
         for(int q = 0; q < 2*nbfs; q++) {
