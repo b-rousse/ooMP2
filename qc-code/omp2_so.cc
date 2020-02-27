@@ -117,11 +117,9 @@ OMP2_SO::OMP2_SO(const TensorRank4 *eriTensor, Eigen::MatrixXd SFCoeffs, const i
      int DIIS_max_num_iters = 8;//Scuseria, Lee, Schaefer Chem Phys Lett 1896 recommend 8
      double DIIS_storage_threshhold = 1e-0;
      double DIIS_threshhold = 1e-0;
-     bool earlybird = true;//This calculates a few results from the MP2 step needed before loop starts, removing the mp2 amplitude from the picture for DIIS. Found to be helpful in certain circumstances.
      bool enforce_well_behaved_DIIS = true;
      std::string CN_handling;
      if(enforce_well_behaved_DIIS) {CN_handling = "reset";} //"shutoff" for permanent DIIS shutoff, "relax" to start DIIS relaxation scheme, "reset" for DIIS purge & immediate restart, "delay" for DIIS purge & delayed restart
-     if(use_DIIS) {earlybird=true;}
      bool ccpvdz = false;
      if(nbfs > 20) {ccpvdz = true;}
      bool checkpoint_assessment = false;
@@ -160,20 +158,8 @@ OMP2_SO::OMP2_SO(const TensorRank4 *eriTensor, Eigen::MatrixXd SFCoeffs, const i
     //end unchangeable DIIS settings
 
 
-    //Tests for poor DIIS inputs
-    //
-     if(DIIS_max_num_iters == 0){
-        std::cout << "ERROR: DIIS_max_num_iters cannot be zero." << std::endl;
-        exit(EXIT_FAILURE);
-     }
-     else if (DIIS_max_num_iters == 0) {
-        std::cout << "WARNING: You have selected only one tensor to be used in DIIS, equivalent to not using DIIS. Increase DIIS_num_iters for speedup." << std::endl;
-     }
-     if(DIIS_storage_threshhold < DIIS_threshhold) {
-        std::cout << "ERROR: DIIS_storage_threshhold cannot be smaller than DIIS_threshhold." << std::endl;
-        exit(EXIT_FAILURE);
-     }
-    //end tests for poor DIIS inputs
+    //Tests for improper DIIS inputs
+    OMP2_SO::diis_input_check(DIIS_max_num_iters, DIIS_storage_threshhold, DIIS_threshhold);
 
     //
     //START OO LOOP
@@ -181,9 +167,8 @@ OMP2_SO::OMP2_SO(const TensorRank4 *eriTensor, Eigen::MatrixXd SFCoeffs, const i
     std::cout << "omp2: " << std::endl;
     std::cout << "Iteration             E_omp2            # residuals" << std::endl;
     
-    //cycle_sync calculates a few results from the MP2 step needed before loop starts, removing the mp2 amplitude from the picture for DIIS. Found to be helpful in certain circumstances.
-    OMP2_SO::cycle_sync(Gen_fock, orbital_gradient, orbital_rotation_parameter, collective_orbital_rotation_parameters, F_SO, level_shift, two_electron_integrals, one_electron_integrals, one_particle_density, two_particle_density);
-    
+    //calculate a few items from the MP2 step needed before omp2 can start.
+    OMP2_SO::cycle_sync(Gen_fock, orbital_gradient, orbital_rotation_parameter, collective_orbital_rotation_parameters, level_shift, F_SO, one_electron_integrals, one_particle_density, two_electron_integrals, two_particle_density);
     F_SO = Eigen::MatrixXd::Zero(2*nbfs, 2*nbfs);
 
     while(fabs(diff_E) > tol_E || residcounterSO > 0) {
@@ -200,12 +185,11 @@ OMP2_SO::OMP2_SO(const TensorRank4 *eriTensor, Eigen::MatrixXd SFCoeffs, const i
         if(use_DIIS && fabs(diff_E) < DIIS_storage_threshhold){
             DIIS_store_switch = true;//to prevent deactivating DIIS if we go back above E threshhold
         }
-        if((DIIS_store_switch && diiscount == -1) || recent_reset) {//AT START OF DIIS. Will I have to get a meaningful orbital gradient before this..
+        if((DIIS_store_switch && diiscount == -1) || recent_reset) {//AT START OF DIIS
             DIIS_error_vectors_t2.push_back(doublesSO.resizeR4TensortoVector(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc));
-            //do something for rot? No, as its iterative construction doesn't overlap other iterations
         }
-        //get doublesSO and check for convergence
 
+        //get doublesSO and check for convergence
         if(DIIS_time && MK_DIIS_time){
             Eigen::MatrixXd orbital_rotation_matrix = OMP2_SO::collective_newton_raphson_step(DIIS_orbitalsSO);//step 8: build the Newton-Raphson orbital rotation matrix
             Coeffs = OMP2_SO::rotate_spin_orbital_coefficients(canon_coeffs, &orbital_rotation_matrix);//step 9: rotate the spin-orbital coefficients
@@ -258,191 +242,49 @@ OMP2_SO::OMP2_SO(const TensorRank4 *eriTensor, Eigen::MatrixXd SFCoeffs, const i
             }
         }
         //end get doublesSO and convergence check
+
         if(checkpoint_assessment){std::cout << "line " << __LINE__ << " reached." << std::endl;}
 
         //DIIS storage, cleanup, and logic board
         if(DIIS_store_switch && MK_DIIS_time){
             diiscount++;
-
             //DIIS storage and cleanup
-            DIIS_energies.push_back(E_omp2);
-            DIIS_Tensors.push_back(doublesSO);
-            DIIS_orbital_rotation_parameters.push_back(collective_orbital_rotation_parameters);
-            DIIS_error_vectors_rot.push_back(orbital_gradient);
-            if (!DIIS_time) {
-                if(diiscount == 0 || recent_reset) {
-                    recent_reset = false;
-                    DIIS_error_vectors_t2[diiscount] = DIIS_Tensors[diiscount].resizeR4TensortoVector(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc) - DIIS_error_vectors_t2[diiscount];
-                }
-                else {
-                    DIIS_error_vectors_t2.push_back(DIIS_Tensors[diiscount].resizeR4TensortoVector(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc) - DIIS_Tensors[diiscount - 1].resizeR4TensortoVector(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc)); 
-                }
-            }
-            else {//Now storage changes after DIIS has been triggered.
-                DIIS_error_vectors_t2[diiscount] = DIIS_Tensors[diiscount].resizeR4TensortoVector(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc) - DIIS_error_vectors_t2[diiscount];//this looks weird but is er(i)=t(i)-t_interpolated(i-1), where t_interpolated(i-1) is the DIIS interpolated t that immediately led to t(i).
-            }
-            
-            if(diiscount - diiscount_at_reset >= DIIS_max_num_iters){//trailing cleanup of previous iterates:only keep the needed! diiscount + 1?//unsure if need diiscount_at_reset here
-                DIIS_error_vectors_t2[diiscount - DIIS_max_num_iters].resize(0);//CAREFUL: IF we change DIIS_max_num_iters upon reset, this cleanup routine will miss entries.
-                DIIS_Tensors[diiscount - DIIS_max_num_iters].clear();
-                DIIS_error_vectors_rot[diiscount - DIIS_max_num_iters].resize(0,0);
-                DIIS_orbital_rotation_parameters[diiscount - DIIS_max_num_iters].resize(0,0);
-            }
-            //end DIIS storage and cleanup
+            OMP2_SO::diis_storage_and_cleanup(recent_reset, DIIS_energies, DIIS_error_vectors_t2, DIIS_orbital_rotation_parameters, DIIS_error_vectors_rot, DIIS_Tensors, 
+            DIIS_time, E_omp2, diiscount, nbfs, numocc, diiscount_at_reset, DIIS_max_num_iters, collective_orbital_rotation_parameters, orbital_gradient, doublesSO);
+
             if(checkpoint_assessment){std::cout << "line " << __LINE__ << " reached." << std::endl;}
 
             //DIIS control flow, instruction flags
-            if(fabs(diff_E) < DIIS_threshhold && --DIIS_reset_delay<=0){//example of short circuit evaluation: don't want to decrement DIIS_reset_delay without it being DIIS_time.
-                DIIS_time = true;
-            }
-
-            if(DIIS_time && --until_next_DIIS_restart <=0) {DIIS_restart_given_time_to_be_used = true;}
-
-            if(enforce_well_behaved_DIIS && effective_DIIS_num_iters == DIIS_max_num_iters && DIIS_restart_given_time_to_be_used){//make sure some DIIS gets done. also paves way for later, more advanced resets.
-                double condition_number = OMP2_SO::compute_condition_number(effective_DIIS_num_iters, DIIS_error_matrix);
-                if(print_diis_results) {std::cout << "condition number: " << condition_number << std::endl;}
-                if(condition_number == -1.0) {
-                    if(CN_handling == "shutoff"){//when error matrix becomes ill-conditioned, shut off DIIS forever (with masterkey == MK).This approach should be used if the others have no speed-up
-                        std::cout << "DIIS shutoff" << std::endl; 
-                        MK_DIIS_time = false;
-                    }
-                    else if(CN_handling == "relax"){//When error matrix becomes ill-conditioned, shut off DIIS, rebuild tensors with no DIIS, then do one DIIS step when the error matrix is max dimensions. Repeat once matrix becomes ill-conditioned again.
-                        std::cout << "DIIS relaxation sequence" << std::endl;
-                        DIIS_reset_delay = CN_DIIS_reset_delay;
-                        effective_DIIS_num_iters = 0;
-                        diiscount_at_reset = diiscount;
-                        DIIS_time = false;
-                        for(int i = 1; i < DIIS_max_num_iters; i++){
-                            DIIS_error_vectors_t2[diiscount - i].resize(0);
-                            DIIS_Tensors[diiscount - i].clear();
-                            DIIS_error_vectors_rot[diiscount - i].resize(0,0);
-                            DIIS_orbital_rotation_parameters[diiscount - i].resize(0,0);
-                        }
-                        DIIS_error_vectors_t2[diiscount] = DIIS_Tensors[diiscount].resizeR4TensortoVector(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
-                        DIIS_error_vectors_rot[diiscount] = orbital_gradient;
-                        recent_reset=true;
-                    }
-                    else if(CN_handling == "reset"){//When error matrix becomes ill-condtioned, shut off DIIS, do one step of non-DIIS, then begin reconstruction of DIIS tensors.
-                        std::cout << "DIIS reset" << std::endl;
-                        effective_DIIS_num_iters = 0;
-                        diiscount_at_reset = diiscount;
-                        DIIS_time = false;
-                        for(int i = 1; i < DIIS_max_num_iters; i++){
-                            DIIS_error_vectors_t2[diiscount - i].resize(0);
-                            DIIS_Tensors[diiscount - i].clear();
-                            DIIS_error_vectors_rot[diiscount-i].resize(0,0);
-                            DIIS_orbital_rotation_parameters[diiscount - i].resize(0,0);
-                        }
-                        DIIS_error_vectors_t2[diiscount] = DIIS_Tensors[diiscount].resizeR4TensortoVector(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
-                        DIIS_error_vectors_rot[diiscount] = orbital_gradient;
-                        recent_reset=true;
-                    }
-                    else if(CN_handling == "delay"){//When error matrix becomes ill-conditioned, shut off DIIS, run a few steps of non-DIIS, then run DIIS until error matrix becomes ill-conditioned again. This is equivalent to relax unless matrix somehow doesn't immediately become ill-conditioned again after DIIS step.
-                        std::cout << "DIIS delayed reset" << std::endl;
-                        DIIS_restart_given_time_to_be_used = false;
-                        DIIS_reset_delay = CN_DIIS_reset_delay;//let the code run a few pure theory runs before re-activating DIIS after reset
-                        effective_DIIS_num_iters = 0;
-                        until_next_DIIS_restart = DIIS_max_num_iters;
-                        diiscount_at_reset = diiscount;
-                        DIIS_time = false;
-                        for(int i = 1; i < DIIS_max_num_iters; i++){
-                            DIIS_error_vectors_t2[diiscount - i].resize(0);
-                            DIIS_Tensors[diiscount - i].clear();
-                            DIIS_error_vectors_rot[diiscount-i].resize(0,0);
-                            DIIS_orbital_rotation_parameters[diiscount - i].resize(0,0);
-                        }
-                        DIIS_error_vectors_t2[diiscount] = DIIS_Tensors[diiscount].resizeR4TensortoVector(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
-                        DIIS_error_vectors_rot[diiscount] = orbital_gradient;
-                        recent_reset=true;
-                    }
-                }
-            }
-
-
-            if(diiscount - diiscount_at_reset >= DIIS_max_num_iters){
-                effective_DIIS_num_iters = DIIS_max_num_iters;
-            }
-            else {
-                effective_DIIS_num_iters++;
-            }
+            OMP2_SO::diis_control_flow(MK_DIIS_time, DIIS_time, recent_reset, DIIS_restart_given_time_to_be_used, effective_DIIS_num_iters, DIIS_reset_delay, diiscount_at_reset, until_next_DIIS_restart, DIIS_error_vectors_t2, DIIS_error_vectors_rot, DIIS_orbital_rotation_parameters, DIIS_Tensors,
+            CN_handling, enforce_well_behaved_DIIS, print_diis_results, CN_DIIS_reset_delay, diiscount, nbfs, numocc, DIIS_max_num_iters, diff_E, DIIS_threshhold, DIIS_error_matrix, orbital_gradient);
             
             if(checkpoint_assessment){std::cout << "line " << __LINE__ << " reached." << std::endl;}
 
-            //end DIIS control flow, instruction flags
             DIIS_error_matrix = Eigen::MatrixXd::Zero(effective_DIIS_num_iters+1, effective_DIIS_num_iters+1);
         }
-        //end DIIS storage, cleanup, and logic board
 
         //DIIS interpolation and storage of interpolated doubles tensor to new iteration's error matrix
         if(DIIS_time && MK_DIIS_time){
-            //std::cout << "length of tensors (errors) vector : " << DIIS_Tensors.size() << " (" << DIIS_error_vectors_t2.size() << ")" <<std::endl;
+            OMP2_SO::diis_interpolation(DIIS_error_matrix, DIIS_orbitalsSO, DIIS_doublesSO, DIIS_error_vectors_t2,
+            DIIS_error_vectors_rot, DIIS_orbital_rotation_parameters, DIIS_Tensors, print_diis_results, diiscount, nbfs, numocc, count, effective_DIIS_num_iters);
             if(checkpoint_assessment){std::cout << "line " << __LINE__ << " reached." << std::endl;}
-            for(int i = 0 ; i < effective_DIIS_num_iters; i++){
-                for(int j = 0; j < effective_DIIS_num_iters; j++){
-                    DIIS_error_matrix(i,j) = (DIIS_error_vectors_t2[i + diiscount + 1 - effective_DIIS_num_iters].transpose() * DIIS_error_vectors_t2[j + diiscount + 1 - effective_DIIS_num_iters]);//This bugger was all 0 for i,j < num_iters 
-                    //DIIS_error_matrix(i,j) += (DIIS_error_vectors_rot[i + diiscount + 1 - effective_DIIS_num_iters] * DIIS_error_vectors_rot[j + diiscount + 1 - effective_DIIS_num_iters]).sum();//This bugger was all 0 for i,j < num_iters                 
-                    DIIS_error_matrix(i,j) += DIIS_error_vectors_rot[i + diiscount + 1 - effective_DIIS_num_iters].cwiseProduct(DIIS_error_vectors_rot[j + diiscount + 1 - effective_DIIS_num_iters]).sum();//This bugger was all 0 for i,j < num_iters                 
-                }
-                DIIS_error_matrix(effective_DIIS_num_iters,i) = -1.0;
-                DIIS_error_matrix(i,effective_DIIS_num_iters) = -1.0;
-                DIIS_error_matrix(effective_DIIS_num_iters,effective_DIIS_num_iters) = 0.0;
-            }
-            
-            if(checkpoint_assessment){std::cout << "line " << __LINE__ << " reached." << std::endl;}
-
-            //std::cout << "Error Matrix: " << std::endl << DIIS_error_matrix << std::endl;
-            //check condition of error matrix: if ill-conditioned set a reset. But first, get a feel for CN and its magnitude when convergence starts to dwindle, ie when a lot of weightings are 0 and one weighting is 1.
-            //std::cout << "Condition number : " << SpinOrbitalCCD::compute_condition_number(effective_DIIS_num_iters, DIIS_error_matrix) << std::endl << std::endl;
-            //Eigensolver here;
-            Eigen::VectorXd Desiredvec(effective_DIIS_num_iters + 1);
-            for(int i = 0; i < effective_DIIS_num_iters; i++){
-                Desiredvec(i) = 0.0;
-            }
-            Desiredvec(effective_DIIS_num_iters) = -1.0;
-
-            Eigen::VectorXd x = DIIS_error_matrix.colPivHouseholderQr().solve(Desiredvec);
-            //Eigen::VectorXd x = DIIS_error_matrix.fullPivHouseholderQr().solve(Desiredvec);
-            if(print_diis_results) {
-                std::cout << "weighting: " << x.transpose() << std::endl;
-                std::cout << "error matrix at count " << count << " is "<< std::endl << DIIS_error_matrix << std::endl;
-            }
-
-            //TensorRank4 DIIS_doublesSO(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
-            DIIS_doublesSO.setZero();
-            DIIS_orbitalsSO.setZero();
-            if(checkpoint_assessment){std::cout << "line " << __LINE__ << " reached." << std::endl;}
-
-            for (int s = 0; s < effective_DIIS_num_iters; s++ ) {
-                for (auto i = 0; i < 2*numocc; i++) {
-                    for (auto j = 0; j < 2*numocc; j++) {
-                        for (auto a = 0; a < 2*nbfs-2*numocc; a++) {
-                            for (auto b = 0; b < 2*nbfs-2*numocc; b++) {
-                                DIIS_doublesSO(i,a,j,b) += x(s) * (DIIS_Tensors[s + diiscount - effective_DIIS_num_iters + 1])(i,a,j,b);
-                            }
-                        }
-                    }
-                }
-                //for(int p = 0; p < 2*nbfs; p++){
-                //    for (int q = 0; q < 2*nbfs; q++){
-                //        DIIS_orbitalsSO(p,q) += x(s) * (DIIS_orbital_rotation_parameters[s + diiscount - effective_DIIS_num_iters + 1])(p,q);
-                //    }
-                //}
-                DIIS_orbitalsSO += x(s) * DIIS_orbital_rotation_parameters[s + diiscount - effective_DIIS_num_iters + 1];
-            }
-
-            if(checkpoint_assessment){std::cout << "line " << __LINE__ << " reached." << std::endl;}
-
-            //if(!stanton_CCD){//DO THIS WAY FOR OMP2: IT REMOVES THE NEED TO STORE A NEW TENSOR = DIIS_doublesSO AND INSTEAD PUTS IT INTO doublesSO, BUT ONLY WORKS FOR RESIDUAL CONSTRUCTION
-            //    doublesSO = DIIS_doublesSO;
-            //    DIIS_doublesSO.clear();
-            //    DIIS_error_vectors_t2.push_back(doublesSO.resizeR4TensortoVector(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc));
-            //}
-            DIIS_error_vectors_t2.push_back(DIIS_doublesSO.resizeR4TensortoVector(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc));
         }
-        //end DIIS interpolation and storage of interpolated doubles tensor to new iteration's error matrix
     }
 };
 
+void OMP2_SO::diis_input_check(int DIIS_max_num_iters, double DIIS_storage_threshhold, double DIIS_threshhold){
+    if(DIIS_max_num_iters == 0){
+        std::cout << "ERROR: DIIS_max_num_iters cannot be zero." << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    else if (DIIS_max_num_iters == 0) {
+        std::cout << "WARNING: You have selected only one tensor to be used in DIIS, equivalent to not using DIIS. Increase DIIS_num_iters for speedup." << std::endl;
+    }
+    if(DIIS_storage_threshhold < DIIS_threshhold) {
+        std::cout << "ERROR: DIIS_storage_threshhold cannot be smaller than DIIS_threshhold." << std::endl;
+        exit(EXIT_FAILURE);
+    }
+}
 
 double OMP2_SO::compute_condition_number(const int dim1, const Eigen::MatrixXd &A){
     Eigen::FullPivLU<Eigen::MatrixXd> lu(A);
@@ -722,7 +564,6 @@ Eigen::MatrixXd OMP2_SO::build_total_one_particle_density(const Eigen::MatrixXd 
     return one_particle_density;
 }
 
-
 TensorRank4 OMP2_SO::build_two_particle_density(TensorRank4 *doubles, const Eigen::MatrixXd &rdm1e_hf, const Eigen::MatrixXd &rdm1e_mp2){
     TensorRank4 two_particle_density(2*nbfs, 2*nbfs, 2*nbfs, 2*nbfs);
     two_particle_density.setZero();
@@ -794,11 +635,161 @@ Eigen::MatrixXd OMP2_SO::compute_orbital_rotation_parameter(const Eigen::MatrixX
     return x_vo;
 }
 
-void OMP2_SO::cycle_sync(Eigen::MatrixXd &Gen_fock, Eigen::MatrixXd &orbital_gradient, Eigen::MatrixXd &orbital_rotation_parameter, Eigen::MatrixXd &collective_orbital_rotation_parameters, const Eigen::MatrixXd &F_SO, const double level_shift, const TensorRank4 &two_electron_integrals, const Eigen::MatrixXd &one_electron_integrals, const Eigen::MatrixXd &one_particle_density, const TensorRank4 &two_particle_density){
+void OMP2_SO::diis_storage_and_cleanup(bool &recent_reset, std::vector<double> &DIIS_energies, std::vector<Eigen::VectorXd> &DIIS_error_vectors_t2, std::vector<Eigen::MatrixXd> &DIIS_orbital_rotation_parameters, std::vector<Eigen::MatrixXd> &DIIS_error_vectors_rot, std::vector<TensorRank4> &DIIS_Tensors,
+const bool DIIS_time, const double E_omp2, const int diiscount, const int nbfs, const int numocc, const int diiscount_at_reset, const int DIIS_max_num_iters, const Eigen::MatrixXd &collective_orbital_rotation_parameters, const Eigen::MatrixXd &orbital_gradient, const TensorRank4 &doublesSO){
+    DIIS_energies.push_back(E_omp2);
+    DIIS_Tensors.push_back(doublesSO);
+    DIIS_orbital_rotation_parameters.push_back(collective_orbital_rotation_parameters);
+    DIIS_error_vectors_rot.push_back(orbital_gradient);
+    if (!DIIS_time) {
+        if(diiscount == 0 || recent_reset) {
+            recent_reset = false;
+            DIIS_error_vectors_t2[diiscount] = DIIS_Tensors[diiscount].resizeR4TensortoVector(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc) - DIIS_error_vectors_t2[diiscount];
+        }
+        else {
+            DIIS_error_vectors_t2.push_back(DIIS_Tensors[diiscount].resizeR4TensortoVector(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc) - DIIS_Tensors[diiscount - 1].resizeR4TensortoVector(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc)); 
+        }
+    }
+    else {//Now storage changes after DIIS has been triggered.
+        DIIS_error_vectors_t2[diiscount] = DIIS_Tensors[diiscount].resizeR4TensortoVector(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc) - DIIS_error_vectors_t2[diiscount];//this looks weird but is er(i)=t(i)-t_interpolated(i-1), where t_interpolated(i-1) is the DIIS interpolated t that immediately led to t(i).
+    }
+    
+    if(diiscount - diiscount_at_reset >= DIIS_max_num_iters){//trailing cleanup of previous iterates:only keep the needed! diiscount + 1?//unsure if need diiscount_at_reset here
+        DIIS_error_vectors_t2[diiscount - DIIS_max_num_iters].resize(0);//CAREFUL: IF we change DIIS_max_num_iters upon reset, this cleanup routine will miss entries.
+        DIIS_Tensors[diiscount - DIIS_max_num_iters].clear();
+        DIIS_error_vectors_rot[diiscount - DIIS_max_num_iters].resize(0,0);
+        DIIS_orbital_rotation_parameters[diiscount - DIIS_max_num_iters].resize(0,0);
+    }
+}
+
+void OMP2_SO::cycle_sync(Eigen::MatrixXd &Gen_fock, Eigen::MatrixXd &orbital_gradient, Eigen::MatrixXd &orbital_rotation_parameter, Eigen::MatrixXd &collective_orbital_rotation_parameters, 
+const double level_shift, const Eigen::MatrixXd &F_SO, const Eigen::MatrixXd &one_electron_integrals, const Eigen::MatrixXd &one_particle_density, const TensorRank4 &two_electron_integrals, const TensorRank4 &two_particle_density){
     Gen_fock = OMP2_SO::construct_generalized_fock(&two_electron_integrals, &one_electron_integrals, &one_particle_density, &two_particle_density);//step 7:compute the Newton-Raphson step
     orbital_gradient = OMP2_SO::compute_orbital_gradient(Gen_fock);//step 7
     orbital_rotation_parameter = OMP2_SO::compute_orbital_rotation_parameter(orbital_gradient, F_SO, level_shift);//step 7
     collective_orbital_rotation_parameters = orbital_rotation_parameter;//step 7}
+}
+
+void OMP2_SO::diis_control_flow(bool &MK_DIIS_time, bool &DIIS_time, bool &recent_reset, bool &DIIS_restart_given_time_to_be_used, int &effective_DIIS_num_iters, int &DIIS_reset_delay, int &diiscount_at_reset, int &until_next_DIIS_restart, std::vector<Eigen::VectorXd> &DIIS_error_vectors_t2, std::vector<Eigen::MatrixXd> &DIIS_error_vectors_rot, std::vector<Eigen::MatrixXd> &DIIS_orbital_rotation_parameters, std::vector<TensorRank4> &DIIS_Tensors,
+const std::string CN_handling, const bool enforce_well_behaved_DIIS, const bool print_diis_results, const int CN_DIIS_reset_delay, const int diiscount, const int nbfs, const int numocc, const int DIIS_max_num_iters, const double diff_E, const double DIIS_threshhold, const Eigen::MatrixXd &DIIS_error_matrix, const Eigen::MatrixXd &orbital_gradient){
+    if(fabs(diff_E) < DIIS_threshhold && --DIIS_reset_delay<=0){//example of short circuit evaluation: don't want to decrement DIIS_reset_delay without it being DIIS_time.
+        DIIS_time = true;
+    }
+
+    if(DIIS_time && --until_next_DIIS_restart <=0) {DIIS_restart_given_time_to_be_used = true;}
+
+    if(enforce_well_behaved_DIIS && effective_DIIS_num_iters == DIIS_max_num_iters && DIIS_restart_given_time_to_be_used){//make sure some DIIS gets done. also paves way for later, more advanced resets.
+        double condition_number = OMP2_SO::compute_condition_number(effective_DIIS_num_iters, DIIS_error_matrix);
+        if(print_diis_results) {std::cout << "condition number: " << condition_number << std::endl;}
+        if(condition_number == -1.0) {
+            if(CN_handling == "shutoff"){//when error matrix becomes ill-conditioned, shut off DIIS forever (with masterkey == MK).This approach should be used if the others have no speed-up
+                std::cout << "DIIS shutoff" << std::endl; 
+                MK_DIIS_time = false;
+            }
+            else if(CN_handling == "relax"){//When error matrix becomes ill-conditioned, shut off DIIS, rebuild tensors with no DIIS, then do one DIIS step when the error matrix is max dimensions. Repeat once matrix becomes ill-conditioned again.
+                std::cout << "DIIS relaxation sequence" << std::endl;
+                DIIS_reset_delay = CN_DIIS_reset_delay;
+                effective_DIIS_num_iters = 0;
+                diiscount_at_reset = diiscount;
+                DIIS_time = false;
+                for(int i = 1; i < DIIS_max_num_iters; i++){
+                    DIIS_error_vectors_t2[diiscount - i].resize(0);
+                    DIIS_Tensors[diiscount - i].clear();
+                    DIIS_error_vectors_rot[diiscount - i].resize(0,0);
+                    DIIS_orbital_rotation_parameters[diiscount - i].resize(0,0);
+                }
+                DIIS_error_vectors_t2[diiscount] = DIIS_Tensors[diiscount].resizeR4TensortoVector(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
+                DIIS_error_vectors_rot[diiscount] = orbital_gradient;
+                recent_reset=true;
+            }
+            else if(CN_handling == "reset"){//When error matrix becomes ill-condtioned, shut off DIIS, do one step of non-DIIS, then begin reconstruction of DIIS tensors.
+                std::cout << "DIIS reset" << std::endl;
+                effective_DIIS_num_iters = 0;
+                diiscount_at_reset = diiscount;
+                DIIS_time = false;
+                for(int i = 1; i < DIIS_max_num_iters; i++){
+                    DIIS_error_vectors_t2[diiscount - i].resize(0);
+                    DIIS_Tensors[diiscount - i].clear();
+                    DIIS_error_vectors_rot[diiscount-i].resize(0,0);
+                    DIIS_orbital_rotation_parameters[diiscount - i].resize(0,0);
+                }
+                DIIS_error_vectors_t2[diiscount] = DIIS_Tensors[diiscount].resizeR4TensortoVector(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
+                DIIS_error_vectors_rot[diiscount] = orbital_gradient;
+                recent_reset=true;
+            }
+            else if(CN_handling == "delay"){//When error matrix becomes ill-conditioned, shut off DIIS, run a few steps of non-DIIS, then run DIIS until error matrix becomes ill-conditioned again. This is equivalent to relax unless matrix somehow doesn't immediately become ill-conditioned again after DIIS step.
+                std::cout << "DIIS delayed reset" << std::endl;
+                DIIS_restart_given_time_to_be_used = false;
+                DIIS_reset_delay = CN_DIIS_reset_delay;//let the code run a few pure theory runs before re-activating DIIS after reset
+                effective_DIIS_num_iters = 0;
+                until_next_DIIS_restart = DIIS_max_num_iters;
+                diiscount_at_reset = diiscount;
+                DIIS_time = false;
+                for(int i = 1; i < DIIS_max_num_iters; i++){
+                    DIIS_error_vectors_t2[diiscount - i].resize(0);
+                    DIIS_Tensors[diiscount - i].clear();
+                    DIIS_error_vectors_rot[diiscount-i].resize(0,0);
+                    DIIS_orbital_rotation_parameters[diiscount - i].resize(0,0);
+                }
+                DIIS_error_vectors_t2[diiscount] = DIIS_Tensors[diiscount].resizeR4TensortoVector(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc);
+                DIIS_error_vectors_rot[diiscount] = orbital_gradient;
+                recent_reset=true;
+            }
+        }
+    }
+
+    if(diiscount - diiscount_at_reset >= DIIS_max_num_iters){
+        effective_DIIS_num_iters = DIIS_max_num_iters;
+    }
+    else {
+        effective_DIIS_num_iters++;
+    }
+            
+}
+
+void OMP2_SO::diis_interpolation(Eigen::MatrixXd &DIIS_error_matrix, Eigen::MatrixXd &DIIS_orbitalsSO, TensorRank4 &DIIS_doublesSO, std::vector<Eigen::VectorXd> &DIIS_error_vectors_t2,
+const std::vector<Eigen::MatrixXd> &DIIS_error_vectors_rot, const std::vector<Eigen::MatrixXd> &DIIS_orbital_rotation_parameters, const std::vector<TensorRank4> &DIIS_Tensors, const bool print_diis_results, const int diiscount, const int nbfs, const int numocc, const int count, const int effective_DIIS_num_iters){
+    for(int i = 0 ; i < effective_DIIS_num_iters; i++){
+        for(int j = 0; j < effective_DIIS_num_iters; j++){
+            DIIS_error_matrix(i,j) = (DIIS_error_vectors_t2[i + diiscount + 1 - effective_DIIS_num_iters].transpose() * DIIS_error_vectors_t2[j + diiscount + 1 - effective_DIIS_num_iters]);//This bugger was all 0 for i,j < num_iters 
+            DIIS_error_matrix(i,j) += DIIS_error_vectors_rot[i + diiscount + 1 - effective_DIIS_num_iters].cwiseProduct(DIIS_error_vectors_rot[j + diiscount + 1 - effective_DIIS_num_iters]).sum();//This bugger was all 0 for i,j < num_iters                 
+        }
+        DIIS_error_matrix(effective_DIIS_num_iters,i) = -1.0;
+        DIIS_error_matrix(i,effective_DIIS_num_iters) = -1.0;
+        DIIS_error_matrix(effective_DIIS_num_iters,effective_DIIS_num_iters) = 0.0;
+    }
+    
+    Eigen::VectorXd Desiredvec(effective_DIIS_num_iters + 1);
+    for(int i = 0; i < effective_DIIS_num_iters; i++){
+        Desiredvec(i) = 0.0;
+    }
+    Desiredvec(effective_DIIS_num_iters) = -1.0;
+    Eigen::VectorXd x = DIIS_error_matrix.colPivHouseholderQr().solve(Desiredvec);
+    //Eigen::VectorXd x = DIIS_error_matrix.fullPivHouseholderQr().solve(Desiredvec);
+    if(print_diis_results) {
+        std::cout << "weighting: " << x.transpose() << std::endl;
+        std::cout << "error matrix at count " << count << " is "<< std::endl << DIIS_error_matrix << std::endl;
+    }
+    DIIS_doublesSO.setZero();
+    DIIS_orbitalsSO.setZero();
+    for (int s = 0; s < effective_DIIS_num_iters; s++ ) {
+        for (auto i = 0; i < 2*numocc; i++) {
+            for (auto j = 0; j < 2*numocc; j++) {
+                for (auto a = 0; a < 2*nbfs-2*numocc; a++) {
+                    for (auto b = 0; b < 2*nbfs-2*numocc; b++) {
+                        DIIS_doublesSO(i,a,j,b) += x(s) * (DIIS_Tensors[s + diiscount - effective_DIIS_num_iters + 1])(i,a,j,b);
+                    }
+                }
+            }
+        }
+        DIIS_orbitalsSO += x(s) * DIIS_orbital_rotation_parameters[s + diiscount - effective_DIIS_num_iters + 1];
+    }
+    //if(!stanton_CCD){//DO THIS WAY FOR OMP2: IT REMOVES THE NEED TO STORE A NEW TENSOR = DIIS_doublesSO AND INSTEAD PUTS IT INTO doublesSO, BUT ONLY WORKS FOR RESIDUAL CONSTRUCTION
+    //    doublesSO = DIIS_doublesSO;
+    //    DIIS_doublesSO.clear();
+    //    DIIS_error_vectors_t2.push_back(doublesSO.resizeR4TensortoVector(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc));
+    //}
+    DIIS_error_vectors_t2.push_back(DIIS_doublesSO.resizeR4TensortoVector(2*numocc, 2*nbfs-2*numocc, 2*numocc, 2*nbfs-2*numocc));
 }
 
 Eigen::MatrixXd OMP2_SO::collective_newton_raphson_step(const Eigen::MatrixXd &collective_rotation){

@@ -90,6 +90,8 @@ class OMP2_SO{
 
     OMP2_SO(const TensorRank4 *eriTensor, const Eigen::MatrixXd SFCoeffs, const int nbfs, const int numocc, Eigen::VectorXd *Evals, Eigen::MatrixXd *H_core, const Eigen::MatrixXd *S, const double enuc);
 
+    void diis_input_check(int DIIS_max_num_iters, double DIIS_storage_threshhold, double DIIS_threshhold);
+
     double compute_condition_number(const int dim1, const Eigen::MatrixXd &A);
 
     Eigen::MatrixXd rotate_so_sized_matrix(const Eigen::MatrixXd *matrix_to_rotate, const Eigen::MatrixXd *coefficients);
@@ -125,7 +127,17 @@ class OMP2_SO{
 
     Eigen::MatrixXd compute_orbital_rotation_parameter(const Eigen::MatrixXd &w, const Eigen::MatrixXd &fso, double level_shift);//DO LEVEL SHIFTING???
 
-    void cycle_sync(Eigen::MatrixXd &Gen_fock, Eigen::MatrixXd &orbital_gradient, Eigen::MatrixXd &orbital_rotation_parameter, Eigen::MatrixXd &collective_orbital_rotation_parameters, const Eigen::MatrixXd &F_SO, const double level_shift, const TensorRank4 &two_electron_integrals, const Eigen::MatrixXd &one_electron_integrals, const Eigen::MatrixXd &one_particle_density, const TensorRank4 &two_particle_density);
+    void cycle_sync(Eigen::MatrixXd &Gen_fock, Eigen::MatrixXd &orbital_gradient, Eigen::MatrixXd &orbital_rotation_parameter, Eigen::MatrixXd &collective_orbital_rotation_parameters, 
+    const double level_shift, const Eigen::MatrixXd &F_SO, const Eigen::MatrixXd &one_electron_integrals, const Eigen::MatrixXd &one_particle_density, const TensorRank4 &two_electron_integrals, const TensorRank4 &two_particle_density);
+
+    void diis_storage_and_cleanup(bool &recent_reset, std::vector<double> &DIIS_energies, std::vector<Eigen::VectorXd> &DIIS_error_vectors_t2, std::vector<Eigen::MatrixXd> &DIIS_orbital_rotation_parameters, std::vector<Eigen::MatrixXd> &DIIS_error_vectors_rot, std::vector<TensorRank4> &DIIS_Tensors,
+    const bool DIIS_time, const double E_omp2, const int diiscount, const int nbfs, const int numocc, const int diiscount_at_reset, const int DIIS_max_num_iters, const Eigen::MatrixXd &collective_orbital_rotation_parameters, const Eigen::MatrixXd &orbital_gradient, const TensorRank4 &doublesSO);
+
+    void diis_control_flow(bool &MK_DIIS_time, bool &DIIS_time, bool &recent_reset, bool &DIIS_restart_given_time_to_be_used, int &effective_DIIS_num_iters, int &DIIS_reset_delay, int &diiscount_at_reset, int &until_next_DIIS_restart, std::vector<Eigen::VectorXd> &DIIS_error_vectors_t2, std::vector<Eigen::MatrixXd> &DIIS_error_vectors_rot, std::vector<Eigen::MatrixXd> &DIIS_orbital_rotation_parameters, std::vector<TensorRank4> &DIIS_Tensors,
+    const std::string CN_handling, const bool enforce_well_behaved_DIIS, const bool print_diis_results, const int CN_DIIS_reset_delay, const int diiscount, const int nbfs, const int numocc, const int DIIS_max_num_iters, const double diff_E, const double DIIS_threshhold, const Eigen::MatrixXd &DIIS_error_matrix, const Eigen::MatrixXd &orbital_gradient);
+
+    void diis_interpolation(Eigen::MatrixXd &DIIS_error_matrix, Eigen::MatrixXd &DIIS_orbitalsSO, TensorRank4 &DIIS_doublesSO, std::vector<Eigen::VectorXd> &DIIS_error_vectors_t2,
+    const std::vector<Eigen::MatrixXd> &DIIS_error_vectors_rot, const std::vector<Eigen::MatrixXd> &DIIS_orbital_rotation_parameters, const std::vector<TensorRank4> &DIIS_Tensors, const bool print_diis_results, const int diiscount, const int nbfs, const int numocc, const int count, const int effective_DIIS_num_iters);
 
     Eigen::MatrixXd collective_newton_raphson_step(const Eigen::MatrixXd &collective_rotation);
 
